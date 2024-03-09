@@ -1,0 +1,346 @@
+H3 {
+	FONT: bold 15pt Arial,Verdana,Helvetica,sans-serif; COLOR: white; MARGIN-TOP: 1; MARGIN-BOTTOM: 1; TEXT-ALIGN: Center; BACKGROUND: #000000
+}
+TH {
+	FONT: bold 10pt Arial,Helvetica,sans-serif; COLOR: white
+}
+BODY {
+	FONT: 10pt Arial,Helvetica,sans-serif; COLOR: black
+}
+TABLE {
+	FONT: 10pt Arial,Helvetica,sans-serif; 
+	COLOR: black; 
+	BORDER: Medium White None; 
+	border-collapse: collapse;
+}
+TD {
+	COLOR: black; font-style: normal; font-variant: normal; font-weight: normal; font-size: 8pt; font-family: Arial, Helvetica, sans-serif; 
+}
+B {
+	FONT-WEIGHT: bold
+}
+.num {
+	FONT: 8pt Courier,serif
+}
+.tt {
+	FONT: 8pt Courier,serif; COLOR: black
+}
+.headrow {
+	BACKGROUND: #CCCCCC; FONT: bold 8pt Arial,Helvetica,sans-serif; COLOR: black; BORDER-RIGHT: #999999 1px solid; BORDER-TOP: #999999 1px solid; BORDER-LEFT: #999999 1px solid; BORDER-BOTTOM: #999999 1px solid; MARGIN-TOP: 1px; MARGIN-BOTTOM: 1px; TEXT-ALIGN: Center
+}
+.incell {
+	FONT: 8pt Arial,Helvetica,sans-serif; COLOR: black; BORDER-RIGHT: #999999 1px solid; BORDER-TOP: #999999 1px solid; BORDER-LEFT: #999999 1px solid; BORDER-BOTTOM: #999999 1px solid; TEXT-ALIGN: Center
+}
+A {
+	TEXT-DECORATION: none
+}
+A:link {
+	COLOR: #ffffff
+}
+A:visited {
+	COLOR: #ffffff
+}
+A:hover {
+	COLOR: #00ffff
+}
+.small A:link {
+	COLOR: #b5b5e6
+}
+.small A:visited {
+	COLOR: #b5b5e6
+}
+.small A:hover {
+	COLOR: #00ffff
+}
+
+.BORDERTABLE_LEFT TD
+{
+	border:1px solid #e7e7e7;
+	border-collapse: collapse;
+	padding:0;
+	background-color:#e7e7e7;
+	width:155px;
+	text-align:right;
+        padding-top:2px;
+	padding-right:3px;
+        padding-bottom:1px;
+}
+
+.BORDERTABLE_LEFT TH
+{
+	border:1px solid #e7e7e7;
+	border-collapse: collapse;
+	padding:0;
+	background-color:#e7e7e7;
+	width:155px;
+	text-align:right;
+        padding-top:5px;
+	padding-right:3px;
+        padding-bottom:5px;
+	font-size:8pt;
+	font-family:Arial
+}
+.BORDERTABLE1 TD
+{
+        white-space:nowrap;
+        border:1px solid #6666cc;
+        border-collapse: collapse;
+        padding:0;
+        text-align:center;
+        padding-top:1px;
+	padding-left:3px;
+	padding-right:3px;
+        padding-bottom:1px;
+}
+
+.BORDERTABLE1 TH
+{
+        white-space:nowrap;
+        border:1px solid #6666cc;
+        border-collapse: collapse;
+        padding:0;
+        text-align:center;
+        padding-top:5px;
+	padding-left:3px;
+	padding-right:3px;
+        padding-bottom:5px;
+	font-size:8pt;
+	font-family:Arial
+}
+.TITLE2
+{
+	color:#000000;
+	background-color:#e7e7e7;
+	width:158px;
+        font-weight: bolder;
+	text-align:right;
+	vertical-align:top;
+	padding:0;
+	border:0;
+}
+
+div#content div.divider {
+float:left;
+width:0px;
+    margin: 30px 0 0 0;
+}
+
+.HEADER_TR
+{
+	background-color:#2971b9;
+	width:100%;
+}
+
+.LOGO_TD{
+	/*background-image:url(image/CY_LOGO.gif);*/
+	background-color:#2971b9;
+	background-repeat:no-repeat;
+	height:58px;
+	width:288px;
+	text-align:left;
+}
+
+.LOGO{
+	width:125px;
+	margin-left:25px;
+	margin-top:10px;
+	border:0px;
+}
+
+/*New style for main/sub menu*/
+.menu_table {
+	height:77px;
+	width:809px;
+	background-color:#5b5b5b;
+	border-spacing:0px;
+}
+
+.menu_td_common{
+	width:163px;
+	height:49px;
+	font-weight: normal; 
+	font-size: 10pt; 
+	color: black; 
+	font-style: normal; 
+	font-family: Arial, Helvetica, sans-serif; 
+	font-variant: normal; 
+	border-color:#000000;
+	vertical-align:middle;
+}
+
+.menu_td1{
+	width:163px;
+	height:49px;
+	font-size: 10pt; 
+	text-align:center;
+}
+
+h3#bmenu_h3 {
+	background-color:#5b5b5b;
+}
+
+font#bmenu_font {
+	font-size:15pt;
+	font-family:Arial;
+	color:#ffffff;
+}
+.menu_td2{
+	width:646px;
+	height:49px;
+	font-size: 10pt; 
+	border-color:#000000;
+	background-color:#5b5b5b;
+	vertical-align:center;
+}
+
+.main_menu_table{
+	height:33px;
+	font-weight: normal; 
+	font-size: 10pt; 
+	font-style: normal; 
+	font-family: Arial, Helvetica, sans-serif; 
+	font-variant: normal; 
+	border-spacing:0;
+	border-collapse:collapse;
+	background-color:#2971b9;
+}
+
+.productname_td {
+	font-weight: bolder; 
+	font-size: 10pt;
+	text-align:right;
+	background-color:#2971b9;
+	color:#ffffff;
+	height:33px;
+}
+
+.model_td {
+	font-weight: bolder; 
+	font-size: 8pt;
+	text-align:center;
+	background-color:#5b5b5b;
+	color:#ffffff;
+	border-color:#000000;
+	height:12px;
+	width:109px;
+	vertical-align:middle;
+}
+
+.product_menu_separate1{
+	width:537px;
+	height:1px;
+	background-color:#5b5b5b;
+	font-size: 1pt; 
+}
+
+.main_menu_td {
+	width:646px;
+	background-color:#5b5b5b;
+	height:32px;
+}
+
+.main_menu_td_table{
+	width:646px;
+	height:6px;
+	font-weight: normal; 
+	font-size: 10pt; 
+	font-style: normal; 
+	font-family: Arial, Helvetica, sans-serif; 
+	font-variant: normal; 
+	border:0;
+	border-spacing:0;
+	border-collapse:collapse;
+	padding:0;
+}
+
+.product_menu_separate2{
+	font-weight: normal; 
+	font-size: 1pt; 
+	color: black; 
+	font-style: normal; 
+	font-family: Arial, Helvetica, sans-serif; 
+	font-variant: normal; 
+	border-right: medium none;
+	border-top: medium none;
+	border-left: medium none;
+	border-bottom: medium none;
+	text-align:center
+	vertical-align:middle;
+	background-color:#2971b9;
+}
+
+.main_menu {
+	height:20px;
+	background-color:#5b5b5b;
+	vertical-align:middle;
+	font-weight:700;
+	color:#ffffff;
+	text-decoration:none;
+}
+
+.sub_menu_td {
+	width:643px;
+	background-color:#2971b9;
+	height:21px;
+	border:0;
+	padding:0;
+	padding-bottom:3px;
+	padding-top:3px;
+}
+
+.sub_menu_table{
+	width:643px;
+	height:21px;
+	border:0;
+	border-spacing:0;
+}
+
+.subfun_div
+{
+	color:#ffffff;
+}
+
+.blankspan
+{
+	padding-left:15px;
+	padding-right:15px;
+	padding-bottom:3px;
+	padding-top:3px;
+	text-align:center;
+	color:#ffffff;
+}
+
+
+.pic_select_fun
+{
+	background-image:url(image/UI_07.gif);
+	background-repeat:repeat;
+	height:8px;
+}
+.pic_option_fun
+{
+	background-image:url(image/UI_06.gif);
+	background-repeat:repeat;
+	height:8px;
+}
+
+.option_fun_sel
+{
+	font-weight:700;
+	color:#ffffff;
+	background-color:#2971b9;
+	height:20px;
+	text-align:center;
+	vertical-align:middle;
+}
+
+.option_fun
+{
+	font-weight:700;
+	color:#ffffff;
+	background-color:#5b5b5b;
+	height:20px;
+	text-align:center;
+	vertical-align:middle;
+	text-decoration:none;
+}
