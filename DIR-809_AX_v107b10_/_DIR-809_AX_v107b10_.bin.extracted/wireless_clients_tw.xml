@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns="http://www.w3.org/1999/xhtml">
+	<xsl:output method="html" indent="yes"/>
+	<xsl:template match="/">
+		<div class="box">
+			<h3>無線客戶端的數量 : 
+				<xsl:value-of select="count(//assoc)"/>
+			</h3>
+			<table  class="formlisting" cellpadding="0" cellspacing="1">
+				<thead>
+					<tr>
+						<th>MAC地址</th>
+						<th>IP地址</th>
+						<th>模式</th>
+						<th>速率</th>
+						<th>信號 (%)</th>
+					</tr>
+				</thead>
+				<tfoot>
+				</tfoot>
+				<tbody>
+					<xsl:apply-templates/>
+				</tbody>
+			</table>
+		</div>
+	</xsl:template>
+	
+	<xsl:template match="assoc">
+		<tr>
+			<td>
+				<xsl:value-of select="mac"/>
+			</td>
+			<td>
+				<xsl:value-of select="ip_address"/>
+			</td>
+			<td>
+				<xsl:value-of select="type"/>
+			</td>
+			<td>
+				<xsl:value-of select="rate"/>
+			</td>
+			<td>
+				<xsl:value-of select="quality"/>
+			</td>
+		</tr>
+	</xsl:template>
+	<xsl:template match="text()" priority="-1" />
+</xsl:stylesheet>

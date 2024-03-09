@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?><ddns_status><dynStatus><% getInfo("ddnsStatus"); %></dynStatus><dynDomain><% getInfo("ddnsOrayDomain"); %></dynDomain><dynType><% getIndex("ddnsType"); %></dynType></ddns_status>

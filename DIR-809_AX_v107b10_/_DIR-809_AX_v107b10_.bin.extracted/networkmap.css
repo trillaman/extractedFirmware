@@ -1,0 +1,147 @@
+﻿.mainbg
+{
+	background-color: #757575;
+	margin: 2px;
+}
+
+div.maincontainer
+{
+	margin-left: auto;
+	margin-right: auto;
+	width: 841px;
+	background-color: #404343;
+	border-left: 0;
+	border-right: 1px solid #404042;
+/*	border-left: 1px solid White;
+	border-right: 1px solid White;
+*/
+}
+
+div.bannercontainer2
+{
+		width: 841px;
+        height: 92px;
+        background-color: #757575;
+        background-repeat: repeat-x;
+		border: none;
+}
+div.bannercontainer2 a:link, a:visited, a:active, img
+{
+        border: none;
+		float: left;
+}
+div.bannercontainer2 div.product
+{
+	font-size: 14px;
+	color: #e6e6e6;
+	/*position: absolute;
+	left: 700px;
+	top: 30px;*/
+	float: right;/*kity*/
+	line-height: 18px;/*kity*/
+	padding: 40px 10px 0 0;/*kity*/
+}
+div.bannercontainer2 span.version
+{
+	font-size: 14px;
+	color: #c0c0c0;
+	position: absolute;
+	left: 700px;
+	top: 50px;
+}
+
+div.simple2container
+{
+	clear: both;
+	background-color: #404042;
+	padding-top: 20px;
+	padding-bottom: 20px;
+	width: 841px;
+}
+div.simple2container div.simple2body
+{
+	clear: both;
+	margin-left: auto;
+	margin-right: auto;
+	width: 710px;
+}
+div.networkmap
+{
+	border: none;
+	padding: 0 10px 10px 10px;
+	background-color: #d4d4d4;	
+}
+
+.networkmap h2 {
+	color: #000000;
+        background-color: rgb(218,114,40);
+        font-size: 14px;
+        font-weight: bold;
+        letter-spacing: 1px;
+        text-transform: none;
+	text-align: left;
+        margin: 0 -10px 5px -10px;
+        padding: 5px 5px 5px 10px;	
+}
+
+div.gap
+{
+	height: 8px;
+}
+div.centerline
+{
+	text-align: center;
+}
+div.copyright
+{
+	color: white;
+	font: 12px Tahoma;
+	text-align: center;
+	padding: 10px;
+}
+.br_tb1
+{
+font-family: Tahoma, Helvetica, Geneva, Arial, sans-serif;
+font-size: 14px;
+text-align:right;
+font-weight: bold;
+}
+.l_tb1
+{
+font-family: Tahoma, Helvetica, Geneva, Arial, sans-serif;
+font-size: 14px;
+text-align:left;
+}
+html, body, div, h1, h2, h3, h4, p, ul, ol, li, dl, dt, dd, td, th, input, select, textarea 
+{
+font-family: Tahoma, Helvetica, Geneva, Arial, sans-serif;
+font-size: 14px;
+}
+input, select, textarea 
+{
+font-family: Tahoma, Helvetica, Geneva, Arial, sans-serif;
+font-size: 14px;
+}
+span.value
+{  
+display:-moz-inline-box; 
+display:inline-block;  
+width:134px;
+}
+#masthead_container1 
+{
+width: 100%;
+background-color: rgb(184,73,32);
+border-width: 0;
+border-style: none solid none solid;
+margin: 0;
+padding: 0;
+}
+#header_container {
+background-color: #404343;
+border-color: #FFFFFF;
+border-width: 0 1px 0 1px;
+border-style: none;
+color: white;
+}
+
