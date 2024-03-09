@@ -1,0 +1,360 @@
+#!/bin/sh
+
+daylight_set="/var/run/daylight_set"
+
+#Set DST time by UI
+DS_MM=`rdcsman 0x00070022 u32`
+DS_DD=`rdcsman 0x00070024 u32`
+DS_HH=`rdcsman 0x00070026 u32`
+DE_MM=`rdcsman 0x00070023 u32`
+DE_DD=`rdcsman 0x00070025 u32`
+DE_HH=`rdcsman 0x00070027 u32`
+
+#DUT`s current time
+time_now()
+{
+YY=`date | /bin/awk '{print $6}'`
+MM=`date | /bin/awk '{print $2}'`
+DD=`date | /bin/awk '{print $3}'`
+HH=`date | /bin/awk '{print $4}' | cut -c 1-2`
+MIN=`date | /bin/awk '{print $4}' | cut -c 4-5`
+}
+_time_now()
+{
+YY=`date|cut -d ' ' -f6`
+MM=`date|cut -d ' ' -f2`
+DD=`date|cut -d ' ' -f3`
+HH=`date|cut -d ' ' -f4|cut -c 1-2`
+MIN=`date|cut -d ' ' -f4|cut -c 4-5`
+}
+
+remain()
+{
+    if [ "$DS_MM" -gt "$DE_MM" ]; then
+		E_YY=`expr $YY + 1`
+		E_YY="$E_YY"
+	else
+		E_YY=$YY
+	fi
+    if [ $DE_MM -lt 10 ] ; then
+    	E_MM="0$DE_MM"
+	else
+        E_MM="$DE_MM"
+    fi
+    if [ $DE_DD -lt 10 ] ; then
+        E_DD="0$DE_DD"
+	else
+		E_DD="$DE_DD"
+    fi
+    if [ $DE_HH -lt 10 ] ; then
+        E_HH="0$DE_HH"
+    else
+        E_HH="$DE_HH"
+    fi
+	S_YY=$YY
+    if [ $DS_MM -lt 10 ] ; then
+        S_MM="0$DS_MM"
+    else
+        S_MM="$DS_MM"
+    fi
+    if [ $DS_DD -lt 10 ] ; then
+        S_DD="0$DS_DD"
+    else
+        S_DD="$DS_DD"
+    fi
+    if [ $DS_HH -lt 10 ] ; then
+        S_HH="0$DS_HH"
+    else
+        S_HH="$DS_HH"
+    fi
+	shif="00"
+	echo "S_MM=$S_MM,S_DD=$S_DD,S_HH=$S_HH,shif=$shif,S_YY=$S_YY"
+    echo "E_MM=$E_MM,E_DD=$E_DD,E_HH=$E_HH,shif=$shif,E_YY=$E_YY"
+	DST_STAR=`date -d "$S_MM$S_DD$S_HH$shif$S_YY" +%s`
+    DST_END=`date -d "$E_MM$E_DD$E_HH$shif$E_YY" +%s`
+	NOW_SEC=`date +%s`
+	echo "DST_STAR=$DST_STAR,DST_END=$DST_END, NOW_SEC=$NOW_SEC"
+	STAR_REM_SEC=`expr $DST_STAR - $NOW_SEC`
+	REM_SEC=`expr $DST_END - $NOW_SEC`
+	echo "STAR_REM_SEC=$STAR_REM_SEC, REM_SEC=$REM_SEC"
+}
+
+# str type mon to dig type
+mon_to_dig()
+{
+	if [ "$MM" == "Jan" ] ; then
+		DMM=1
+	fi
+    if [ "$MM" == "Feb" ] ; then
+        DMM=2
+    fi
+    if [ "$MM" == "Mar" ] ; then
+        DMM=3
+    fi
+    if [ "$MM" == "Apr" ] ; then
+        DMM=4
+    fi
+    if [ "$MM" == "May" ] ; then
+        DMM=5
+    fi
+    if [ "$MM" == "Jun" ] ; then
+        DMM=6
+    fi
+    if [ "$MM" == "Jul" ] ; then
+        DMM=7
+    fi
+    if [ "$MM" == "Aug" ] ; then
+        DMM=8
+    fi
+    if [ "$MM" == "Sep" ] ; then
+        DMM=9
+    fi
+    if [ "$MM" == "Oct" ] ; then
+        DMM=10
+    fi
+    if [ "$MM" == "Nov" ] ; then
+        DMM=11
+    fi
+    if [ "$MM" == "Dec" ] ; then
+        DMM=12
+    fi
+}
+
+#check mon/day/hour overflow
+chk_mon()
+{
+    if [ $DMM -gt 12 ] ; then
+        DMM=`expr $DMM - 12`
+        YY=`expr $YY + 1`
+    fi
+    if [ $DMM -eq 0 ] ; then
+        DMM=12
+        YY=`expr $YY - 1`
+    fi
+}
+chk_hour()
+{
+	if [ $HH -ge 24 ] ; then
+        HH=`expr $HH - 24`
+       	DD=`expr $DD + 1`
+    fi
+    if [ $HH -lt 0 ] ; then
+        HH=23
+        DD=`expr $DD - 1`
+    fi
+}
+chk_day()
+{
+    if [ $DMM -eq 1 ] || [ $DMM -eq 8 ] ; then
+		if [ $DD -gt 31 ] ; then
+			DD=`expr $DD - 31`
+			DMM=`expr $DMM + 1`
+		fi
+        if [ $DD -eq 0 ] ; then
+            DD=31
+			if [ $DMM -eq 1 ] ; then
+            	DMM=12
+			fi
+            if [ $DMM -eq 8 ] ; then
+                DMM=7
+            fi
+        fi
+	fi
+    if [ $DMM -eq 2 ] ; then
+    	VAR1=$(( $YY % 4 ))
+		VAR2=$(( $YY % 100 ))
+		VAR3=$(( $YY % 400 ))
+		RY=0
+		if [ $VAR1 -eq 0 ] ; then
+			RY=1
+		fi
+        if [ $VAR2 -eq 0 ] ; then
+			RY=0
+		fi
+        if [ $VAR2 -eq 0 ] && [ $VAR3 -eq 0 ] ; then
+			RY=1
+		fi
+		if [ $RY -eq 1 ] ; then		
+        	if [ $DD -gt 29 ] ; then
+            	DD=`expr $DD - 29`
+            	DMM=`expr $DMM + 1`
+        	fi
+		else
+        	if [ $DD -gt 28 ] ; then
+            	DD=`expr $DD - 28`
+            	DMM=`expr $DMM + 1`
+        	fi
+		fi
+        if [ $DD -eq 0 ] ; then
+            DD=31
+            DMM=1
+        fi
+    fi
+    if [ $DMM -eq 3 ] ; then
+        if [ $DD -gt 31 ] ; then
+            DD=`expr $DD - 31`
+            DMM=`expr $DMM + 1`
+        fi
+        if [ $DD -eq 0 ] ; then
+            if [ $RY -eq 1 ] ; then
+                DD=29
+                DMM=2
+            else
+                DD=28
+                DMM=2
+            fi
+        fi
+    fi
+    if [ $DMM -eq 4 ] || [ $DMM -eq 6 ] || [ $DMM -eq 9 ] || [ $DMM -eq 11 ] ; then
+        if [ $DD -gt 30 ] ; then
+            DD=`expr $DD - 30`
+            DMM=`expr $DMM + 1`
+        fi
+        if [ $DD -eq 0 ] ; then
+            DD=31
+            DMM=`expr $DMM - 1`
+        fi
+    fi
+    if [ $DMM -eq 5 ] || [ $DMM -eq 7 ] || [ $DMM -eq 10 ] || [ $DMM -eq 12 ] ; then
+        if [ $DD -gt 31 ] ; then
+            DD=`expr $DD - 31`
+            DMM=`expr $DMM + 1`
+        fi
+        if [ $DD -eq 0 ] ; then
+            DD=30
+            DMM=`expr $DMM - 1`
+        fi
+    fi
+}
+
+set_dst()
+{
+	if [ $SUB -eq 0 ] ; then
+  		HH=`expr $HH + 1`
+	else
+        HH=`expr $HH - 1`
+	fi
+	if [ $HH -lt 10 ] ; then
+  		HH="0$HH"
+   	fi
+	chk_hour        
+	chk_day            
+	chk_mon
+	if [ $DD -lt 10 ] ; then
+  		DD="0$DD"
+   	fi
+    if [ $DMM -lt 10 ] ; then        
+		echo "date -s 0$DMM$DD$HH$MIN$YY"
+        date -s 0$DMM$DD$HH$MIN$YY
+    else
+    	echo "date -s $DMM$DD$HH$MIN$YY"
+     	date -s $DMM$DD$HH$MIN$YY
+  	fi
+}
+
+# start main function
+main_start()
+{
+    if [ -r $daylight_set ]; then
+    	echo "already daylight saving"   
+    else
+		time_now
+	    mon_to_dig
+    	remain
+    	if [ "$NOW_SEC" -ge "$DST_STAR" ] && [ "$NOW_SEC" -lt "$DST_END" ]; then
+        	ISDST=1
+    	else
+        	ISDST=0
+    	fi
+		echo "ISDST= $ISDST"
+		SUB=0  #Time add 1 hour
+		if [ $ISDST -eq 1 ] ; then
+			echo "TZ in DST, need change time"
+			set_dst
+			touch $daylight_set
+		else
+            if [ $STAR_REM_SEC -gt 0 ] ; then
+                echo "Not in DST,But Wait for DST"
+    			ST=0
+    			ST_OUT=$STAR_REM_SEC
+    			echo "ST_OUT=$ST_OUT"
+    			until ([ $ST -ge $ST_OUT ])
+    			do
+        			sleep 1
+        			ST=$(($ST+1))
+        			if [ $ST -ge $ST_OUT ] ; then
+						set_dst
+                        touch $daylight_set
+						ISDST=1
+					fi
+    			done
+			else
+				echo "Not in DST...."
+			fi
+		fi
+	fi
+
+    if [ $ISDST -eq 0 ] ; then
+		exit 1
+	fi
+
+	TIME=0
+	TIMEOUT=$REM_SEC 
+	echo "TIMEOUT=$TIMEOUT"
+	until false
+	do
+		sleep 1
+ 		TIME=$(($TIME+1))
+		if [ $TIME -ge $TIMEOUT ] ; then
+			echo "End Daylight Saving!"
+			rm -f $daylight_set
+			time_now
+			mon_to_dig
+			SUB=1 #Time sub 1 hour
+			set_dst
+        	exit 1
+       	fi
+	done
+	exit 1
+}
+
+main_stop()
+{
+    if [ -r $daylight_set ]; then
+        echo "DST Disable, Time Recover"
+        rm -f $daylight_set
+        time_now
+        mon_to_dig
+        SUB=1
+        set_dst
+    else
+		echo "DST Disable"
+	fi
+}
+
+
+#### main ####
+[ -z "$1" ] && usage
+case "$1" in
+# connect to remote pptp server
+  start)
+	main_start
+    echo
+    ;;
+# disconnect from remote pptp server
+  stop)
+	main_stop
+    echo
+    ;;
+  *)
+    echo "Usage:"
+    echo "start: set-dst start"
+    echo "stop:  set-dst stop"
+    exit 1
+esac
+
+exit 0
+
+
+
+

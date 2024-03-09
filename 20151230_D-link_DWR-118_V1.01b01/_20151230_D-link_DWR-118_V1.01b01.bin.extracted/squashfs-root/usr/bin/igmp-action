@@ -1,0 +1,78 @@
+#!/bin/sh
+#
+# IGMPv3 
+# From AUTOCONF
+# Paths to programs
+
+#local wan interface
+WAN_IF_NAME=`rdcsman 0x8000F361 str`
+BR_IF_NAME=`rdcsman 0x8000F301  str`
+CUR_WANTYPE=`rdcsman 0x00010003 u32`
+ZERO_IP=169.254.69.77
+#multiwan interface
+DIGIT_TO_HEX_MULTIWAN_INDEX=`rdcsman 0x00010199 u32`
+MULTIWAN_IGMP_IF_INDEX=`printf "%x" $DIGIT_TO_HEX_MULTIWAN_INDEX`
+TMP=`printf "%x" $((DIGIT_TO_HEX_MULTIWAN_INDEX+2))`
+MULTIWAN_IF_NAME=`rdcsman 0x8000F36$TMP str`
+MULTIWAN_CUR_WANTYPE=`rdcsman 0x0001012$MULTIWAN_IGMP_IF_INDEX u32`
+
+
+
+start() {
+if [ -n "`ps | grep igmpproxy | grep -v grep`" ]; then
+	exit 0
+fi
+	local err; err=0
+#if [ $MULTIWAN_IGMP_IF_INDEX -eq 99 ] ; then
+if [ $DIGIT_TO_HEX_MULTIWAN_INDEX -eq 99 ] ; then
+	# if WANTYPE is PPPoE the wan port needs a fake IP for IGMP
+	if [ $CUR_WANTYPE -eq 64 ] ; then
+		ifconfig $WAN_IF_NAME 169.254.69.77
+	fi
+
+	# enable IGMPv3 proxy daemon
+	echo ==== Local WAN IGMPv3 START ====
+	eval igmpproxy &
+else
+	
+	# if WANTYPE is PPPoE the wan port needs a fake IP for IGMP
+	if [ $MULTIWAN_CUR_WANTYPE -eq 64 ] ; then
+		ifconfig $MULTIWAN_IF_NAME 169.254.69.77
+	fi
+
+	# enable IGMPv3 proxy daemon
+	echo ==== MultiWAN IGMPv3 START ====
+	eval igmpproxy &
+
+fi
+	
+	return $err
+}
+
+stop() {
+	local err; err=0
+
+	echo ==== IGMPv3 STOP ====
+	eval "killall -9 igmpproxy 2> /dev/null"
+
+	return $err
+}
+
+usage() {
+	echo "$0 [start|stop|restart|reload|config]"
+	exit 1
+}
+
+# +++++++++++++++ main ++++++++++++++++++++++ 
+[ -z "$1" ] && usage;
+
+err=0
+case "$1"  in
+	config)	 ;;
+	start)	 start;;
+	stop)		 stop;;
+	reload)	 ;;
+	restart) stop; sleep 1; start;;
+	*)		   usage;;
+esac
+exit $err

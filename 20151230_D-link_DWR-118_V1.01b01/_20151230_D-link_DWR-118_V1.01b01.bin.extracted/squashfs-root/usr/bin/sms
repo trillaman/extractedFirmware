@@ -1,0 +1,73 @@
+#!/bin/sh
+#
+# sms                     For CLI SMS
+#
+
+[ -f /usr/bin/3g-scriptlib ] && . /usr/bin/3g-scriptlib
+[ ! -f /usr/bin/3g-scriptlib ] && [ -f /tmp/3g-scriptlib ] && . /tmp/3g-scriptlib
+
+temp_index=`expr $1 + 1`
+CSID_C_3G_MULTIWAN_SMS_SWITCH="`rdcsman 0x001e24a$temp_index u32`"
+
+if [ "$CSID_C_3G_MULTIWAN_SMS_SWITCH" == "0" ]; then
+  	echo "SMS switch disable..."
+		return 0
+fi
+
+if [ $1 ] ; then
+	index_3G=$1
+	csid_index=`expr $1 + 1`
+fi
+if [ -n "$3" ] ; then
+	sms_index=$3
+	sms_phone=$3
+fi
+if [ -n "$4" ] ; then
+	sms_context=$4
+fi
+
+send(){
+  if [ -z "$sms_phone" ] || [ -z "$sms_context" ] ; then
+  	echo "Phone number or SMS context error..."
+    exit 0
+  fi
+	wrcsman "0x801e270$csid_index \"$sms_phone"
+	wrcsman "0x801e280$csid_index \"$sms_context"
+	sms_server $index_3G send
+}
+
+read(){
+	echo Timestamp:
+	rdsms $index_3G $sms_index %T
+	echo
+	echo From Phone Number:
+	rdsms $index_3G $sms_index %P
+	echo
+	echo Message:
+	rdsms $index_3G $sms_index %X
+	echo
+}
+
+delete(){
+	sms_server $index_3G delete $sms_index
+}
+
+usage() {
+	   echo "$0 [index_3G] [send]   [phone_number] [sms_context]"
+	   echo "$0 [index_3G] [read]   [sms_index]"
+	   echo "$0 [index_3G] [delete] [sms_index]"
+	 	 exit 1
+}
+
+# ----------------- main --------------------
+[ -z "$2" ] && usage;
+
+case "$2" in
+   send)        send;;
+   read)        read;;
+   delete)      delete;;
+   help)				usage;; 
+   *)           usage;;
+esac
+
+exit 0

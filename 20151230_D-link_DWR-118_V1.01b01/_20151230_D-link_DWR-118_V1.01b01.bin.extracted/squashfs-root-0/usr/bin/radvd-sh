@@ -1,0 +1,378 @@
+#!/bin/sh
+
+# Paths to programs
+UVM=/usr/bin/uvm
+UO_PATH=/usr/uo/
+UO_FILE=radvd.conf.uo
+UO_CONF=radvd.conf
+
+WAN_IP=`rdcsman 0x80010002 ipv4`
+#Modify if we need to do phase2 test
+IPV6_PHASE2_TEST_CASE=0
+
+case=$2
+
+# 80011000 ipv6 prefix
+
+ip6to4_start() {
+	echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
+	V6PREFIX=$(printf "2002:%02x%02x:%02x%02x" `echo $WAN_IP | tr "." " "`)
+	wrcsman "0x80011000 \"$V6PREFIX:1"
+	ip tunnel add tun6to4 mode sit remote any local $WAN_IP ttl 128
+	ip link set dev tun6to4 mtu 1280
+	ip link set dev tun6to4 up
+	ip -6 addr add $V6PREFIX:0::1/16 dev tun6to4
+	ip -6 addr add $V6PREFIX:1::1/64 dev br0
+	ip -6 route add 2000::/3 via ::192.88.99.1 dev tun6to4
+}
+
+ip6to4_stop() {
+	ip -6 route del 2000::/3 via ::192.88.99.1 dev tun6to4
+	ip -6 addr del $V6PREFIX:1::1/64 dev br0
+	ip -6 addr del $V6PREFIX:0::1/16 dev tun6to4
+	ip link set dev tun6to4 down
+}
+
+#Check the preferred lifetime and Valid Lifetime
+chkCFG()
+{
+
+PREFER_LIFETIME=`rdcsman 0x00901100 u32`
+VALID_LIFETIME=`rdcsman 0x00901101 u32`
+if [ $PREFER_LIFETIME -le 0 ] ; then
+	PREFER_LIFETIME=200
+	wrcsman "0x00901100 200"
+fi
+
+if [ $PREFER_LIFETIME -ge $VALID_LIFETIME ] ; then
+	VALID_LIFETIME=`expr $PREFER_LIFETIME \* 2`
+	wrcsman "0x00901101 $VALID_LIFETIME"
+fi
+}
+
+start() {
+	chkCFG
+	local err; err=0
+#	v6DNS=`rdcsman 0x00900603 str`
+#	echo v6DNS is $v6DNS
+    ($UVM $UO_PATH/$UO_FILE > /etc/$UO_CONF || $err=1);
+	RA=/etc/$UO_CONF
+#	if [ "D"$v6DNS != "D" ]; then
+#	    echo "    RDNSS $v6DNS {" >> /etc/$UO_CONF
+#	    echo "        AdvRDNSSOpen on;"  >> /etc/$UO_CONF
+#	    echo "        AdvRDNSSPreference 8;"	 >> /etc/$UO_CONF
+#	    echo "    };" >> /etc/$UO_CONF
+#	else
+#	    echo "No IPv6 DNS avail"
+#	fi
+#tricky here ; just to insert the ending parenthesis
+#	echo "};" >> /etc/$UO_CONF
+
+ if [ $IPV6_PHASE2_TEST_CASE -eq 1 ]; then
+    if [ $case = "7" ] || [ $case = "7-3" ] || [ $case = "8" ] || [ $case = "8-3" ]; then
+		rm /etc/$UO_CONF
+		echo interface br0 > $RA
+		echo "{" >> $RA
+		echo "    AdvRetransTimer 1000;" >> $RA
+		echo "    prefix 3ffe:501:ffff:100::/64" >> $RA
+		echo "        {" >> $RA
+		echo "             AdvOnLink on;" >> $RA
+		echo "             AdvAutonomous on;" >> $RA
+		echo "        };" >> $RA
+		echo "};" >> $RA
+	fi
+
+    if [ $case = "7-2" ] || [ $case = "8-2" ]; then
+		rm /etc/$UO_CONF
+		echo interface br0 > $RA
+		echo "{" >> $RA
+		echo "    AdvRetransTimer 5000;" >> $RA
+		echo "    prefix 3ffe:501:ffff:100::/64" >> $RA
+		echo "        {" >> $RA
+		echo "             AdvOnLink on;" >> $RA
+		echo "             AdvAutonomous on;" >> $RA
+		echo "        };" >> $RA
+		echo "};" >> $RA
+	fi
+
+    if [ $case = "115" ] || [ $case = "116" ] || [ $case = "117" ] || [ $case = "118" ] || [ $case = "119" ] || [ $case = "120" ]; then
+        rm /etc/$UO_CONF
+        echo interface br0 > $RA
+        echo "{" >> $RA
+        echo "    prefix 3ffe:501:ffff:100::/64" >> $RA
+        echo "        {" >> $RA
+        echo "             AdvOnLink on;" >> $RA
+        echo "             AdvAutonomous on;" >> $RA
+        echo "        };" >> $RA
+        echo "};" >> $RA
+    fi
+
+    if [ $case = "121" ] || [ $case = "123" ] || [ $case = "130" ] || [ $case = "131" ]; then
+        rm /etc/$UO_CONF
+        echo interface br0 > $RA
+        echo "{" >> $RA
+        echo "    AdvSendAdvert on;" >> $RA
+        echo "    prefix 3ffe:501:ffff:100::/64" >> $RA
+        echo "	      {" >> $RA
+        echo "             AdvOnLink on;" >> $RA
+        echo "             AdvAutonomous on;" >> $RA
+        echo "        };" >> $RA
+        echo "};" >> $RA
+    fi
+
+    if [ $case = "124" ] ; then
+	rm /etc/$UO_CONF
+	echo interface br0 > $RA
+	echo "{" >> $RA
+        echo "    AdvSendAdvert on;" >> $RA
+	echo "    MaxRtrAdvInterval 10;" >> $RA
+	echo "    MinRtrAdvInterval 5;" >> $RA
+	echo "    prefix 3ffe:501:ffff:100::/64" >> $RA
+	echo "        {" >> $RA
+	echo "             AdvOnLink on;" >> $RA
+	echo "             AdvAutonomous on;" >> $RA
+	echo "        };" >> $RA
+	echo "};" >> $RA
+    fi
+
+    if [ $case = "125" ] ; then
+	rm /etc/$UO_CONF
+	echo interface br0 > $RA
+	echo "{" >> $RA
+        echo "    AdvSendAdvert on;" >> $RA
+	echo "    MaxRtrAdvInterval 600;" >> $RA
+	echo "    MinRtrAdvInterval 198;" >> $RA
+	echo "    prefix 3ffe:501:ffff:100::/64" >> $RA
+	echo "        {" >> $RA
+	echo "             AdvOnLink on;" >> $RA
+	echo "             AdvAutonomous on;" >> $RA
+	echo "        };" >> $RA
+	echo "};" >> $RA
+    fi
+
+    if [ $case = "126" ] ; then
+	rm /etc/$UO_CONF
+	echo interface br0 > $RA
+	echo "{" >> $RA
+	echo "    AdvSendAdvert on;" >> $RA
+	echo "    AdvManagedFlag off;" >> $RA
+	echo "    AdvOtherConfigFlag off;" >> $RA
+	echo "    MaxRtrAdvInterval 4;" >> $RA
+	echo "    MinRtrAdvInterval 3;" >> $RA
+	echo "    AdvCurHopLimit 0;" >> $RA
+	echo "    AdvDefaultLifetime 0;" >> $RA
+	echo "    AdvReachableTime 0;" >> $RA
+	echo " 	  AdvRetransTimer 0;" >> $RA
+	echo "    AdvLinkMTU 0;" >> $RA
+	echo "    prefix 3ffe:501:ffff:100::/64" >> $RA
+	echo "        {" >> $RA
+	echo "             AdvOnLink off;" >> $RA
+        echo "             AdvAutonomous off;" >> $RA
+        echo "             AdvPreferredLifetime 0;" >> $RA
+        echo "    	   AdvValidLifetime 0;" >> $RA
+	echo "        };" >> $RA
+	echo "};" >> $RA
+    fi
+
+    if [ $case = "127" ] ; then
+		rm /etc/$UO_CONF
+		echo interface br0 > $RA
+		echo "{" >> $RA
+		echo "    AdvSendAdvert on;" >> $RA
+		echo "    AdvManagedFlag on;" >> $RA
+		echo "    AdvOtherConfigFlag on;" >> $RA
+		echo "    MinRtrAdvInterval 1350;" >> $RA
+		echo "    MaxRtrAdvInterval 1800;" >> $RA
+		echo "    AdvCurHopLimit 255;" >> $RA
+		echo "    AdvDefaultLifetime 9000;" >> $RA
+		echo "    AdvReachableTime 3600000;" >> $RA
+		echo "    AdvRetransTimer 4294967295;" >> $RA
+		echo "    AdvLinkMTU 1500;" >> $RA
+		echo "    prefix 3ffe:501:ffff:100::/64" >> $RA
+		echo "        {" >> $RA
+		echo "             AdvOnLink on;" >> $RA
+        	echo "             AdvAutonomous on;" >> $RA
+        	echo "    	   AdvPreferredLifetime 4294967295;" >> $RA
+        	echo "    	   AdvValidLifetime 4294967295;" >> $RA
+		echo "        };" >> $RA
+		echo "};" >> $RA
+	fi
+
+    if [ $case = "127-2" ] || [ $case = "128-2" ] || [ $case = "129-2" ]; then
+		rm /etc/$UO_CONF
+		echo interface br0 > $RA
+		echo "{" >> $RA
+		echo "    AdvSendAdvert on;" >> $RA
+		echo "    MinRtrAdvInterval 200;" >> $RA
+		echo "    MaxRtrAdvInterval 600;" >> $RA
+		echo "    AdvCurHopLimit 64;" >> $RA
+		echo "    AdvDefaultLifetime 1800;" >> $RA
+		echo "    AdvReachableTime 30000;" >> $RA
+		echo "    AdvRetransTimer 1000;" >> $RA
+		echo "    AdvLinkMTU 1500;" >> $RA
+		echo "    prefix 3ffe:501:ffff:100::/64" >> $RA
+		echo "        {" >> $RA
+		echo "             AdvOnLink on;" >> $RA
+        	echo "             AdvAutonomous on;" >> $RA
+        	echo "    	   AdvPreferredLifetime 604800;" >> $RA
+        	echo "    	   AdvValidLifetime 2592000;" >> $RA
+		echo "        };" >> $RA
+		echo "};" >> $RA
+	fi
+
+    if [ $case = "128" ] ; then
+		rm /etc/$UO_CONF
+		echo interface br0 > $RA
+		echo "{" >> $RA
+		echo "    AdvSendAdvert on;" >> $RA
+		echo "    prefix 8000::/64" >> $RA
+		echo "        {" >> $RA
+		echo "             AdvOnLink on;" >> $RA
+        	echo "             AdvAutonomous on;" >> $RA  
+		echo "        };" >> $RA
+		echo "};" >> $RA
+	fi
+
+    if [ $case = "129" ] ; then
+		rm /etc/$UO_CONF
+		echo interface br0 > $RA
+		echo "{" >> $RA
+		echo "    AdvSendAdvert on;" >> $RA
+		echo "    prefix fec0::/64" >> $RA
+		echo "        {" >> $RA
+		echo "             AdvOnLink on;" >> $RA
+        	echo "             AdvAutonomous on;" >> $RA
+		echo "        };" >> $RA
+		echo "};" >> $RA
+	fi
+
+    if [ $case = "132" ] ; then
+		rm /etc/$UO_CONF
+		echo interface br0 > $RA
+		echo "{" >> $RA
+		echo "    AdvSendAdvert on;" >> $RA
+		echo "    MaxRtrAdvInterval 40;" >> $RA
+		echo "    MinRtrAdvInterval 30;" >> $RA
+		echo "    prefix 3ffe:501:ffff:100::/64" >> $RA
+		echo "        {" >> $RA
+		echo "             AdvOnLink on;" >> $RA
+        	echo "             AdvAutonomous on;" >> $RA
+		echo "        };" >> $RA
+		echo "};" >> $RA
+	fi
+
+    if [ $case = "133" ] || [ $case = "134" ] || [ $case = "135" ] || [ $case = "136" ] || [ $case = "137" ] || [ $case = "138" ] || [ $case = "139" ] || [ $case = "140" ] || [ $case = "141" ]; then
+		rm /etc/$UO_CONF
+		echo interface br0 > $RA
+		echo "{" >> $RA
+		echo "    AdvSendAdvert on;" >> $RA
+		echo "    prefix 3ffe:501:ffff:100::/64" >> $RA
+		echo "        {" >> $RA
+		echo "             AdvOnLink on;" >> $RA
+        	echo "             AdvAutonomous on;" >> $RA
+		echo "        };" >> $RA
+		echo "};" >> $RA
+	fi
+
+    if [ $case = "142" ] ; then
+        rm /etc/$UO_CONF
+        echo interface br0 > $RA
+        echo "{" >> $RA
+        echo "    AdvSendAdvert on;" >> $RA
+        echo "    AdvCurHopLimit 0;" >> $RA
+        echo "    prefix 3ffe:501:ffff:100::/64" >> $RA
+        echo "        {" >> $RA
+        echo "             AdvOnLink on;" >> $RA
+        echo "             AdvAutonomous on;" >> $RA
+        echo "        };" >> $RA
+        echo "};" >> $RA
+    fi
+
+    if [ $case = "143" ] ; then
+        rm /etc/$UO_CONF
+        echo interface br0 > $RA
+        echo "{" >> $RA
+        echo "    AdvSendAdvert on;" >> $RA
+        echo "    AdvCurHopLimit 15;" >> $RA
+        echo "    prefix 3ffe:501:ffff:100::/64" >> $RA
+        echo "        {" >> $RA
+        echo "             AdvOnLink on;" >> $RA
+        echo "             AdvAutonomous on;" >> $RA
+        echo "        };" >> $RA
+        echo "};" >> $RA
+    fi
+
+    if [ $case = "143-2" ] ; then
+        rm /etc/$UO_CONF
+        echo interface br0 > $RA
+        echo "{" >> $RA
+        echo "    AdvSendAdvert on;" >> $RA
+        echo "    AdvCurHopLimit 64;" >> $RA
+        echo "    prefix 3ffe:501:ffff:100::/64" >> $RA
+        echo "        {" >> $RA
+        echo "             AdvOnLink on;" >> $RA
+        echo "             AdvAutonomous on;" >> $RA
+        echo "        };" >> $RA
+        echo "};" >> $RA
+    fi
+
+    if [ $case = "144" ] ; then
+		rm /etc/$UO_CONF
+		echo interface br0 > $RA
+		echo "{" >> $RA
+		echo "    AdvSendAdvert on;" >> $RA
+		echo "    AdvDefaultLifetime 0;" >> $RA
+		echo "    AdvReachableTime 10000;" >> $RA
+		echo "    prefix 3ffe:501:ffff:100::/64" >> $RA
+		echo "        {" >> $RA
+		echo "             AdvOnLink on;" >> $RA
+        	echo "             AdvAutonomous on;" >> $RA
+		echo "        };" >> $RA
+		echo "};" >> $RA
+	fi
+
+    if [ $case = "144-2" ] ; then
+		rm /etc/$UO_CONF
+		echo interface br0 > $RA
+		echo "{" >> $RA
+		echo "    AdvSendAdvert on;" >> $RA
+		echo "    AdvReachableTime 30000;" >> $RA
+		echo "    prefix 3ffe:501:ffff:100::/64" >> $RA
+		echo "        {" >> $RA
+		echo "             AdvOnLink on;" >> $RA
+        	echo "             AdvAutonomous on;" >> $RA
+		echo "        };" >> $RA
+		echo "};" >> $RA
+	fi
+fi
+radvd
+
+return $err
+}
+
+stop() {
+    local err; err=0
+    kill `cat /var/run/radvd.pid`
+    (rm -f /var/run/radvd.pid);  
+#	ip6to4_stop;
+    return $err
+}
+
+usage() {
+    echo "$0 [start num|stop|restart]"
+    exit 1
+}
+
+[ -z "$1" ] && usage;
+
+err=0
+
+case "$1" in
+    start)      start;;
+    stop)       stop;;
+    restart)    stop; start;;
+    *)      usage;;
+esac
+
+exit $err
+

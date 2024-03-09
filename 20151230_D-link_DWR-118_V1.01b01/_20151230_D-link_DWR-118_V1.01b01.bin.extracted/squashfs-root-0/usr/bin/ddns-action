@@ -1,0 +1,83 @@
+#!/bin/sh
+#
+# ddns                     This script starts or stops a ddns
+#
+
+# From AUTOCONF
+prefix=
+exec_prefix=${prefix}
+
+# Paths to programs
+UVM=/usr/bin/uvm
+UO_PATH=/usr/uo/
+UO_FILE=ddns.conf.uo
+CONF_PATH=/etc/
+CONF_FILE=ddns.conf
+DDNS_EXEC=/usr/sbin/ddns
+DDNS_PIDFILE=/var/run/ddns.pid
+WAN_INDEX=""
+WAN_IP="0xc0a87acd"
+
+
+start() {
+	local err; err=0
+    echo -n "start ddns ..."
+    echo -n "$WAN_INDEX"
+    $UVM $UO_PATH$UO_FILE > $CONF_PATH$CONF_FILE
+	
+	if [ "$WAN_INDEX" == "99" ] || [ "$WAN_INDEX" == "" ]; then
+            echo "WAN_IP "`rdcsman 0x80010002 u32`      >> $CONF_PATH$CONF_FILE
+	else                   
+		#echo -n "----13-----"
+		csid_index=`printf "%x" $((WAN_INDEX))`
+		#echo -n "WAN_IP rdcsman 0x8001011$csid_index u32"
+		echo "WAN_IP "`rdcsman 0x8001011$csid_index u32`   >> $CONF_PATH$CONF_FILE		
+	fi
+
+	$DDNS_EXEC &
+    echo "DDNS Start Function Called"   #debug message added by horowitz
+	return $err
+}
+
+stop() {
+	if [ -e "$DDNS_PIDFILE" ] ; then
+		DDNS_PID=`cat "$DDNS_PIDFILE"`
+		echo "Killing ddns ($DDNS_PID)"
+		kill $DDNS_PID > /dev/null 2>&1
+	else
+		echo "$DDNS_PIDFILE not exit!"
+		err=1
+	fi
+    echo "DDNS Stop Function Called"   #debug message added by horowitz
+	return $err
+}
+
+usage() {
+	echo "$0 [start|stop|restart|reload|config]"
+    echo "DDNS Usage Function Called"  #debug message added by horowitz
+	exit 1
+}
+
+# +++++++++++++++ main ++++++++++++++++++++++ 
+[ -z "$1" ] && usage;
+#[ -z "$2" ] && usage;
+    WAN_INDEX="$2"
+
+err=0
+
+case "$1" in
+	config)		;;
+	start)		start;;
+	stop)		stop;;
+	reload)		;;
+	restart)	stop; start;;
+	*)		usage;;
+esac
+if [ $? = "0" ] ; then
+	echo $0 $@ ok
+else
+	echo $0 $@ error
+	err=1
+fi
+echo "Report:: DDNS Script $0 is executed, executed function is $1"  #debug message added by horowitz
+exit $err

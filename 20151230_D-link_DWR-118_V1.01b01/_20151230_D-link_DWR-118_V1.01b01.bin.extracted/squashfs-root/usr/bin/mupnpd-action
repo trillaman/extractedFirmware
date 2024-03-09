@@ -1,0 +1,252 @@
+#!/bin/sh
+. /usr/bin/scriptlib
+
+MINI_UPNPD_CONF="/etc/miniupnpd.conf"
+MINI_UPNPD_PID="/var/run/miniupnpd.pid"
+UPNP_PORT_MAPPING_NUM=16
+
+start_mupnpd()
+{
+    if [ -e $MINI_UPNPD_CLR ] || [ -e $MINI_UPNPD_PID ]; then
+        stop_mupnpd;
+    fi                                 
+    
+    echo "Start Mini-UPNP !!"
+    nat stop wanx upnp
+    nat start wanx mupnpd
+    gen_mupnp_conf
+    miniupnpd -f $MINI_UPNPD_CONF &
+    
+}
+
+stop_mupnpd()
+{
+    echo "Stop Mini-UPNP !!"
+    nat stop wanx mupnpd
+    [ -e $MINI_UPNPD_PID ] && kill $MINI_UPNPD_PID
+    killall miniupnpd > /dev/null 2>&1
+    rm -f $MINI_UPNPD_PID
+}
+
+gen_mupnp_conf()
+{
+    local WAN_IF="`rdcsman 0x8001000b str`"
+    local LAN_IP="`rdcsman 0x00010004 ipv4`"
+    local LAN_NM="`rdcsman 0x00010005 ipv4`"
+
+    rm -f $MINI_UPNPD_CONF
+    echo "ext_ifname=$WAN_IF" >> $MINI_UPNPD_CONF
+
+    #echo "listening_ip=$LAN_IP/$LAN_NM " >> $MINI_UPNPD_CONF 
+    echo "listening_ip=$LAN_IP" >> $MINI_UPNPD_CONF 
+    for idx in 0 1 2; do 
+        vlan_if="`rdcsman 0x009300c$idx str`"
+        if [ "`ifconfig | grep $vlan_if`" != "" ]; then
+            echo "listening_ip=`rdcsman 0x009300d$idx ipv4`" >> $MINI_UPNPD_CONF 
+        fi
+    done
+
+    local AP_CONTROLLER_AP="`rdcsman 0x00150130 u8`"
+
+    if [ "$AP_CONTROLLER_AP" != "1" ]; then
+    	echo "port=0" >> $MINI_UPNPD_CONF 
+    else
+    	echo "port=4207" >> $MINI_UPNPD_CONF 
+    fi
+    #echo "port=0" >> $MINI_UPNPD_CONF 
+    echo "enable_natpmp=yes " >> $MINI_UPNPD_CONF 
+    echo "enable_upnp=yes " >> $MINI_UPNPD_CONF 
+    #echo "bitrate_up=100000000 " >> $MINI_UPNPD_CONF 
+    #echo "bitrate_down=100000000 " >> $MINI_UPNPD_CONF 
+    echo "secure_mode=no " >> $MINI_UPNPD_CONF 
+    echo "system_uptime=yes " >> $MINI_UPNPD_CONF 
+
+    #echo "notify_interval=60 " >> $MINI_UPNPD_CONF 
+    echo "notify_interval=30 " >> $MINI_UPNPD_CONF 
+    echo "clean_ruleset_interval=600 " >> $MINI_UPNPD_CONF 
+
+    # Customization XML description 
+    local value="`rdcsman 0x80004231 str`" # CSID_S_SYS_UPNP_ICON_NAME 
+    if [ "$value" != "" ]; then
+        echo "friendly_name=$value" >> $MINI_UPNPD_CONF
+    else
+        echo "friendly_name=$value" >> $MINI_UPNPD_CONF
+    fi
+ 
+    value="`rdcsman 0x80004234 str`" # CSID_S_SYS_UPNP_MANUFACTURER 
+    if [ "$value" != "" ]; then
+        echo "manufacturer=$value" >> $MINI_UPNPD_CONF
+    else
+        echo "manufacturer=AMIT" >> $MINI_UPNPD_CONF
+    fi        
+ 
+    value="`rdcsman 0x80004236 str`" # CSID_S_SYS_UPNP_MANUFACTURER_URL
+    if [ "$value" != "" ]; then
+        echo "manufacturer_url=http://$value" >> $MINI_UPNPD_CONF
+    else
+        echo "manufacturer_url=http://www.amit.com.tw" >> $MINI_UPNPD_CONF
+    fi     
+ 
+    value="`rdcsman 0x80004235  str`" # CSID_S_SYS_UPNP_DESCRIPTIONS 
+    if [ "$value" != "" ]; then
+		if [ "$value" == "D-link DSL-2770L" ]; then
+        	echo "model_desc=Windows Media Connect compatible(D-Link Router)" >> $MINI_UPNPD_CONF
+		else
+        	echo "model_desc=$value" >> $MINI_UPNPD_CONF
+		fi
+    else
+        echo "model_desc=Router" >> $MINI_UPNPD_CONF
+    fi       
+ 
+    value="`rdcsman 0x80004238 str`" # CSID_S_SYS_UPNP_MODELURL 
+    if [ "$value" != "" ]; then
+        echo "model_url=http://$value" >> $MINI_UPNPD_CONF
+    else
+        echo "model_url=http://www.amit.com.tw" >> $MINI_UPNPD_CONF
+    fi             
+ 
+    value="`rdcsman 0x80004232 str`" # CSID_S_SYS_UPNP_MODEL_NAME 
+    if [ "$value" != "" ]; then
+		if [ "$value" == "D-link DSL-2770L" ]; then
+        	echo "model_name=Windows Media Connect compatible(D-Link)" >> $MINI_UPNPD_CONF
+		else
+        	echo "model_name=$value" >> $MINI_UPNPD_CONF
+		fi
+    else
+        echo "model_name=Router" >> $MINI_UPNPD_CONF
+    fi       
+     
+    value="`rdcsman 0x80004233 str`" # S_SYS_UPNP_MODEL_NUMBER
+    if [ "$value" != "" ]; then
+        echo "model_number=$value" >> $MINI_UPNPD_CONF
+    else
+        echo "model_number=1" >> $MINI_UPNPD_CONF
+    fi     
+ 
+    value="`rdcsman 0x80004237 str`" # CSID_S_SYS_UPNP_SERIAL_NUMBER 
+    if [ "$value" != "" ]; then
+        echo "serial=$value" >> $MINI_UPNPD_CONF 
+    else
+    	value="`rdcsman 0x80004208 str`" # CSID_S_SYS_INFO_FW_VER 
+    	if [ "$value" != "" ]; then
+        	echo "serial=$value" >> $MINI_UPNPD_CONF 
+    	else
+        	echo "serial=none" >> $MINI_UPNPD_CONF 
+		fi
+    fi    
+
+    local kuuid="/proc/sys/kernel/random/uuid"
+    if [ -e $kuuid ] && [ "`cat $kuuid`" != "" ]; then
+        echo "uuid=`cat $kuuid`" >> $MINI_UPNPD_CONF 
+    elif [ -e /etc/uuid ]; then
+        echo "uuid=`cat /etc/uuid`" >> $MINI_UPNPD_CONF 
+    else
+        echo "uuid=fc4ec57e-b051-11db-88f8-0060085db3f6" >> $MINI_UPNPD_CONF 
+    fi
+
+    #echo "enable_pnpx=no" >> $MINI_UPNPD_CONF
+    echo "enable_pnpx=yes" >> $MINI_UPNPD_CONF
+    echo "presentationurl=http://$LAN_IP" >> $MINI_UPNPD_CONF
+
+    local nm=""
+    sl_netmask_to_prefix $LAN_NM nm
+
+    local PORT_ENABLE="`rdcsman 0x000103b0 u32`"
+
+    if [ "$PORT_ENABLE" != "1" ]; then
+        echo "allow 1024-65535 $LAN_IP/$nm 1024-65535 " >> $MINI_UPNPD_CONF 
+        for idx in 0 1 2; do 
+            vlan_if="`rdcsman 0x009300c$idx str`"
+            if [ "`ifconfig | grep $vlan_if`" != "" ]; then
+                echo "allow 1024-65535 `rdcsman 0x009300d$idx ipv4`/$nm 1024-65535 " >> $MINI_UPNPD_CONF 
+            fi
+        done
+    else
+        echo "allow 1-65535 $LAN_IP/$nm 1-65535 " >> $MINI_UPNPD_CONF 
+        for idx in 0 1 2; do 
+            vlan_if="`rdcsman 0x009300c$idx str`"
+            if [ "`ifconfig | grep $vlan_if`" != "" ]; then
+                echo "allow 1-65535 `rdcsman 0x009300d$idx ipv4`/$nm 1-65535 " >> $MINI_UPNPD_CONF 
+            fi
+        done
+    fi
+
+    echo "deny 0-65535 0.0.0.0/0 0-65535 " >> $MINI_UPNPD_CONF 
+}
+
+show_port_mapping()
+{
+	FILENAME='/tmp/upnp_port_mapping_tmp'
+	iptables -t nat -S MINIUPNPD | grep "\-A" | awk '{print $4,$8,$12}' | awk -F":" '{print $1,$2}' > $FILENAME
+	i=0
+	cat $FILENAME | while read line
+	do
+		h=`printf %x $i`
+		wrcsman "0x0015110$h 1"
+		wrcsman "0x0015111$h \"`echo $line | awk '{print toupper($1)}'`"
+		wrcsman "0x0015112$h `echo $line | awk '{print $2}'`"
+		wrcsman "0x0015113$h \"`echo $line | awk '{print $3}'`"
+		wrcsman "0x0015114$h `echo $line | awk '{print $4}'`"
+		i=`expr $i + 1`
+		if [ $i -eq  $UPNP_PORT_MAPPING_NUM ]; then
+			break
+		fi
+	done
+	rm -f $FILENAME
+}
+
+reset_port_mapping()
+{
+	i=0
+	while [ $i -lt $UPNP_PORT_MAPPING_NUM ]
+	do
+		h=`printf %x $i`
+		en=`rdcsman 0x0015110$h u8`
+		if [ $en -eq 0 ]; then
+			break
+		else
+			wrcsman "0x0015110$h 0"
+			wrcsman "0x0015111$h \""
+			wrcsman "0x0015112$h 0"
+			wrcsman "0x0015113$h \""
+			wrcsman "0x0015114$h 0"
+			i=`expr $i + 1`
+		fi
+	done
+}
+
+###################### Main ##############################
+case "$1" in
+    restart)
+        stop_mupnpd
+        start_mupnpd
+        ;;  
+
+    start)
+        start_mupnpd
+        ;;
+
+    stop)
+        stop_mupnpd
+        ;;	        
+
+    show)   
+        echo "Filter Table"
+        iptables -v -L MINIUPNPD
+            
+        echo ""
+        echo "NAT Table"
+        iptables -t nat -v -L MINIUPNPD
+        ;;	        
+    
+    showpm)
+    	reset_port_mapping
+    	show_port_mapping
+    	;;
+
+    *)
+        echo "$0 [start/stop/restart/show/showpm]"
+        exit 1
+esac
+			
+

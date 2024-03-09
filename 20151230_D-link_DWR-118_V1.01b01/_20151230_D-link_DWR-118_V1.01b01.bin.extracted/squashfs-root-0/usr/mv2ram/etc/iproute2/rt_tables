@@ -1,0 +1,31 @@
+#
+# reserved values
+#
+255	local
+254	main
+253	default
+0	unspec
+#
+# local
+#
+#1	inr.ruhep
+
+199 wan
+200 wan0
+201 wan1
+202 wan2
+203 wan3
+204 wan4
+205 wan5
+206 wan6
+207 wan7
+208 wan8
+209 wan9
+210 wan10
+211 wan11
+212 wan12
+213 wan13
+214 wan14
+215 wan15
+222 wandef
+

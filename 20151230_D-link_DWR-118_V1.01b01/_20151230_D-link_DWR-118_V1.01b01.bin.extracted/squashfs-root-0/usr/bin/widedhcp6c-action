@@ -1,0 +1,167 @@
+#!/bin/sh
+
+DHCP6C="wide-dhcp6c"
+DHCP6C_CONF="/etc/dhcp6c.wide.conf"
+DHCP6C_IF=$(rdcsman 0x80900700 str)
+PREFIXPATH="/var/prefix_info"
+IP2="/usr/sbin/ip"
+
+
+UVM=/usr/bin/uvm
+UO_PATH=/usr/uo/
+UO_FILE=dhcp6c.wide.conf.uo
+UO_CONF=dhcp6c.wide.conf
+
+check_dns()
+{
+	DNS=$(rdcsman 0x900602 u32)
+	if [ $DNS -eq 1 ]; then
+    	dns1=$(rdcsman 0x900600 str)
+    	if [ -n "$dns1" ] ; then
+        	echo "dns1 $dns1"
+        	echo "nameserver $dns1" >> /etc/resolv.conf
+    	fi
+    	dns2=$(rdcsman 0x900601 str)
+    	if [ -n "$dns2" ] ; then
+        	echo "dns2 $dns2"
+        	echo "nameserver $dns2" >> /etc/resolv.conf
+    	fi
+    	wrcsman "0x80900003 \"$dns1 && \
+                 0x80900004 \"$dns2"    
+	fi
+}
+
+setup_peer_dns()
+{
+	DNS=$(rdcsman 0x900602 u32)
+	if [ $DNS -ne 1 ]; then
+    	dns1=""
+    	[ -f "/var/dns_primary_info" ] && dns1="`cat /var/dns_primary_info`"
+    	if [ -n "$dns1" ] ; then
+        	echo "dns1 $dns1"
+        	echo "nameserver $dns1" >> /etc/resolv.conf
+    	fi
+    	dns2=""
+    	[ -f "/var/dns_second_info" ] && dns2="`cat /var/dns_second_info`"
+    	if [ -n "$dns2" ] ; then
+        	echo "dns2 $dns2"
+        	echo "nameserver $dns2" >> /etc/resolv.conf
+    	fi
+    	wrcsman "0x80900003 \"$dns1 && \
+                 0x80900004 \"$dns2"    
+	fi
+}
+
+check_address()
+{
+	ROUTER=$($IP2 -6 neigh show dev $DHCP6C_IF | grep router | awk '{print $1}')
+	IPv6_Link=`ifconfig $DHCP6C_IF | grep :Link | awk '{print $3}' | awk -F"/" '{print $1}'`
+	if [ -n "$ROUTER" ] ; then
+		if [ -n "$IPv6_Link" ] ; then
+			wrcsman "0x80900002 \"$ROUTER"
+			wrcsman "0x80900006 \"$IPv6_Link"
+			setup_peer_dns
+			return 0
+		fi
+	fi
+	return 1
+#	IPP=$($IP2 -6 addr show dev $DHCP6C_IF | grep global | awk '{print $2}')
+#	ROUTER=$($IP2 -6 neigh show dev $DHCP6C_IF | grep router | awk '{print $1}')
+#	if [ -n "$IPP" ] ; then
+#		if [ -n "$ROUTER" ] ; then
+#			IP=$(echo $IPP | cut -d '/' -f 1)
+#        		PL=$(echo $IPP | cut -d '/' -f 2)
+#			wrcsman "0x80900000 \"$IP && \
+#                 		0x80900001 $PL && \
+#                 		0x80900002 \"$ROUTER"
+#        		return 0
+#		fi
+#    	fi
+#	return 1
+}
+ 
+check_connect()
+{
+    time=0
+    while [ $time -le 30 ] ; do
+        if check_address ; then
+            return 0
+        fi
+        sleep 1
+        time=$(($time+1))
+    done
+    return 1
+}
+
+dhcp6c_start()
+{
+	PIDFILE="/var/run/dhcp6c.pid"
+	#check dhcp6c is runniing or not
+	if [ -r "$PIDFILE" ] ; then
+		PID=`cat "$PIDFILE"`
+		#check if still running
+		kill -0 $PID > /dev/null 2>&1
+		if [ $? = 0 ] ; then
+			echo "$0: another dhcpv6c connection up (PID $PID)" >& 2
+			exit 0
+		fi
+		rm -f "$PIDFILE"
+	fi
+
+	check_dns
+
+	echo 0 > /proc/sys/net/ipv6/conf/$DHCP6C_IF/forwarding
+	echo 0 > /proc/sys/net/ipv6/conf/$DHCP6C_IF/accept_ra
+	echo 1 > /proc/sys/net/ipv6/conf/$DHCP6C_IF/accept_redirects
+	
+	$UVM $UO_PATH/$UO_FILE > /etc/$UO_CONF
+#	$DHCP6C -c $DHCP6C_CONF -f $DHCP6C_IF &
+	$DHCP6C -c $DHCP6C_CONF $DHCP6C_IF
+	if check_connect ; then
+		$IP2 -6 route add 2000::/3 via $ROUTER dev $DHCP6C_IF
+		echo 1 > /proc/sys/net/ipv6/conf/$DHCP6C_IF/forwarding
+		wrcsman "0x80900701 0x02"
+	else
+		wrcsman "0x80900701 0x00"
+		kill $(cat /var/run/dhcp6c.pid)
+	fi
+}
+
+dhcp6c_stop()
+{
+	kill $(cat /var/run/dhcp6c.pid)
+	LANIP=$(rdcsman 0x80900009 str)
+#	WANIP=$(rdcsman 0x00900013 str)
+	GATEWAY=$(rdcsman 0x80900002 str)
+	if [ -n "$LANIP" ] ; then
+#		ip -6 route del $LANIP/64 dev br0
+		ifconfig br0 del $LANIP/64
+		ip -6 route del 2000::/3 via $GATEWAY dev $DHCP6C_IF
+	fi
+#	if [ -n "$WANIP" ] ; then
+#		ifconfig eth2.2 del $WANIP/64
+#		ip -6 route del 2000::/3 via $GATEWAY dev eth2.2
+#	fi
+
+	wrcsman "0x80900701 0"
+	wrcsman "0x8090000B \"::0 && \
+		0x80900002 \"::0 && \
+		0x80900009 \"::0"
+#		0x00900013 \"::0"
+}
+
+case "$1" in
+	start)
+		dhcp6c_start
+		exit 0
+		;;
+	stop)
+		dhcp6c_stop
+		;;
+	*)
+		exit 1
+		;;
+esac
+
+exit 0                 
+

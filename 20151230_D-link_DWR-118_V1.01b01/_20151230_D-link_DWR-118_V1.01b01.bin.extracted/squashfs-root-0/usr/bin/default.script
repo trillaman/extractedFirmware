@@ -1,0 +1,720 @@
+#!/bin/sh
+
+# udhcpc script edited by Tim Riker <Tim@Rikers.org>
+
+RUNNING="/var/run/default-script-running"
+DHCP_RUSSIAN_CLR="/var/run/dhcp_russian.clr"
+DHCP_RUSSIAN_SCRIPT="/var/run/dhcp_russian.sh"
+[ -z "$1" ] && echo "Error: should be called from udhcpc" && exit 1
+
+# Make sure only one default script running.
+while :
+do
+    if [ ! -f "$RUNNING" ] ; then
+        break
+    fi
+    echo "exist $RUNNING"
+    sleep 1
+done
+echo 1 > $RUNNING
+
+# Check if exist multiwan index
+if [ -n $2 ] ; then
+	MULTIWAN=$2
+else
+	MULTIWAN=
+fi
+
+if [ -z $MULTIWAN ] ; then
+    IODATA_WIZARD=`rdcsman 0x80013091 u32`
+    if [ $IODATA_WIZARD -eq 1 ]; then
+        WANTYPE=0
+    else
+        WANTYPE=`rdcsman 0x00010003 u32`
+    fi
+	PIDFILE_CONNECT="/var/run/udhcpc.pid.connect"
+	MTU_SIZE=`rdcsman 0x00035009 u16`
+
+	# Replace each CSID fields on Russian mode
+	local WanType=`rdcsman 0x00010003 u32`
+	local DisableRussianMode=`rdcsman 0x0001002B u32` # For PPTP and L2TP wantype
+	if [ $DisableRussianMode -eq 0 ] && [ $WanType -eq 96 ] ; then # Russian PPTP wantype
+	   MTU_SIZE=`rdcsman 0x00035009 u16`
+	elif [ $DisableRussianMode -eq 0 ] && [ $WanType -eq 128 ] ; then # Russian L2TP wantype
+	   MTU_SIZE=`rdcsman 0x00035009 u16`
+	fi
+else
+	MULTIHEX=`printf "%x" $MULTIWAN`
+	WANTYPE=`rdcsman 0x0001012$MULTIHEX u32`
+	TMP1=$((MULTIWAN+1))
+	PIDFILE_CONNECT="/var/run/udhcpc$TMP1.pid.connect"
+	MTU_SIZE=`rdcsman 0x0003517$MULTIHEX u16`
+fi
+
+RESOLV_CONF="/etc/resolv.conf"
+PPP_RESOLV_CONF="/etc/ppp/resolv.conf"
+
+[ -n "$broadcast" ] && BROADCAST="broadcast $broadcast"
+[ -n "$subnet" ] && NETMASK="netmask $subnet"
+
+BACKUP_STATUS=`rdcsman 0x80430600 u32` #set_fo
+RS232_BACKUP_STATUS=`rdcsman 0x80420500 u32`
+3G_CNT_STATUS=`rdcsman 0x801E0700 u16`
+FAILOVER_STATUS=`rdcsman 0x801E1200 u16`
+AUTOBAK_ENABLE=`rdcsman 0x001E000d u16`
+FAILOVER_MODE=`rdcsman 0x001E0080 u16`			
+FAILOVER_WANTYPE=`rdcsman 0x0043000b u32` #failover wantype
+FAILOVER_ENABLE=`rdcsman 0x00430001 u32` #failover enable
+
+LOADSHARING_ENABLE=`rdcsman 0x004301c0 u32`
+LOADSHARING_WANTYPE=`rdcsman 0x0043000b u32`
+LOADSHARING_LAST_WANTYPE=`rdcsman 0x80432b20 u32`
+
+. /usr/bin/scriptlib
+
+nat_for_russian()
+{
+	local WanType=`rdcsman 0x00010003 u32`
+	local DisableRussianMode=`rdcsman 0x0001002B u32` # For PPTP and L2TP wantype
+	local PPPoeDualAccess=`rdcsman 0x00043000 u32`
+
+	local isRussian=0
+	if [ $DisableRussianMode -eq 0 ] && [ $WanType -eq 96 ] ; then # Russian PPTP wantype
+		isRussian=1
+	elif [ $DisableRussianMode -eq 0 ] && [ $WanType -eq 128 ] ; then # Russian L2TP wantype
+		isRussian=1
+	elif [ $WanType -eq 64 ] && [ $PPPoeDualAccess -eq 1 -o $PPPoeDualAccess -eq 2 ];then 
+		isRussian=1
+	fi  
+	
+	if [ $isRussian -eq 1 ];then
+		sleep 12 && wrcsman  "0x800c0002  1" &  #PORTFW
+		sleep 12 && wrcsman  "0x80150002  1" &  #nat misc
+		sleep 12 && wrcsman  "0x80170001  1" &  #spap
+	fi
+}
+
+udhcpc_renew_write_csman_start()
+{
+	sl_get_IP_NM_GW_in_ifconfig $interface IF_IP IF_NM IF_GW
+    sl_get_DNS_in_resolv_conf IF_DNS1 IF_DNS2
+    sl_get_uptime CNTTIME
+
+	if [ -z $MULTIWAN ] ; then
+        if [ $WANTYPE -eq 96 -o $WANTYPE -eq 128 ] ; then
+			CSID_IP=`rdcsman 0x80035002 ipv4`
+            CSID_NM=`rdcsman 0x80035003 ipv4`
+            CSID_GW=`rdcsman 0x80035004 ipv4`           
+        else
+	        CSID_IP=`rdcsman 0x80010002 ipv4`
+    	    CSID_NM=`rdcsman 0x80010003 ipv4`
+        	CSID_GW=`rdcsman 0x80010004 ipv4`
+        fi
+	else
+		if [ $WANTYPE -eq 96 -o $WANTYPE -eq 128 ] ; then
+            CSID_IP=`rdcsman 0x8003511$MULTIHEX ipv4`
+            CSID_NM=`rdcsman 0x8003512$MULTIHEX ipv4`
+            CSID_GW=`rdcsman 0x8003513$MULTIHEX ipv4`
+        else
+            CSID_IP=`rdcsman 0x8001011$MULTIHEX ipv4`
+	        CSID_NM=`rdcsman 0x8001012$MULTIHEX ipv4`
+        	CSID_GW=`rdcsman 0x8001013$MULTIHEX ipv4`
+        fi
+    fi
+
+	if [ "${CSID_IP}" == "${ip}" -a "${CSID_NM}" == "${subnet}" -a "${CSID_GW}" == "${router}" ] ; then
+		if [ -z $MULTIWAN ] ; then
+			wrcsman "0x80035007 0x02 && \
+					 0x80010007 0x02"
+		else
+			wrcsman "0x8003516$MULTIHEX 0x02 && \
+					 0x8001016$MULTIHEX 0x02"
+		fi
+
+		return 0
+	fi
+
+	if [ $ip = "169.254.91.77" ] ; then
+		if [ -z $MULTIWAN ] ; then
+				wrcsman "0x80035002 0x00 && \
+				         0x80035003 0x00 && \
+				         0x80035004 0x00 && \
+				         0x80035005 0x00 && \
+				         0x80035006 0x00 && \
+				         0x80035009 0x00"
+
+			if [ $BACKUP_STATUS -ne 1 ] ; then
+				local WanType=`rdcsman 0x00010003 u32`
+				local DisableRussianMode=`rdcsman 0x0001002B u32` # For PPTP and L2TP wantype
+				local PPPoeDualAccess=`rdcsman 0x00043000 u32`
+				local isRussian=0
+				if [ $DisableRussianMode -eq 0 ] && [ $WanType -eq 96 ] ; then # Russian PPTP wantype
+					isRussian=1
+				elif [ $DisableRussianMode -eq 0 ] && [ $WanType -eq 128 ] ; then # Russian L2TP wantype
+					isRussian=1
+				elif [ $WANTYPE -eq 64 ] && [ $PPPoeDualAccess -eq 1 -o $PPPoeDualAccess -eq 2 ];then  
+					isRussian=1
+				fi
+				if [ $isRussian -ne 1 ];then
+					wrcsman	"0x80010002 0x00 && \
+					     0x80010003 0x00 && \
+					     0x80010004 0x00 && \
+					     0x80010005 0x00 && \
+					     0x80010006 0x00"
+				fi
+			fi			
+
+            CNT_TYPE=`rdcsman 0x0003500a u32`
+            #if CNT_TYPE is on-demand write "wait for traffic" state to csid
+            if [ $CNT_TYPE -eq 0 ] ; then
+                wrcsman "0x80035007 0x05 && \
+                         0x80010007 0x05"
+            else	
+                wrcsman "0x80035007 0x00 && \
+                         0x80010007 0x00"
+            fi
+		else
+            wrcsman "0x8003511$MULTIHEX 0x00 && \
+                     0x8003512$MULTIHEX 0x00 && \
+                     0x8003513$MULTIHEX 0x00 && \
+                     0x8003514$MULTIHEX 0x00 && \
+                     0x8003515$MULTIHEX 0x00 && \
+                     0x8003518$MULTIHEX 0x00"
+
+            if [ $BACKUP_STATUS -ne 1 ] ; then
+                wrcsman	"0x8001011$MULTIHEX 0x00 && \
+                         0x8001012$MULTIHEX 0x00 && \
+                         0x8001013$MULTIHEX 0x00 && \
+                         0x8001014$MULTIHEX 0x00 && \
+                         0x8001015$MULTIHEX 0x00"
+            fi
+        
+            CNT_TYPE=`rdcsman 0x0003518$MULTIHEX u32`
+            #if CNT_TYPE is on-demand write "wait for traffic" state to csid
+            if [ $CNT_TYPE -eq 0 ] ; then
+                wrcsman "0x8003516$MULTIHEX 0x05 && \
+                         0x8001016$MULTIHEX 0x05"
+            else	
+                wrcsman "0x8003516$MULTIHEX 0x00 && \
+                         0x8001016$MULTIHEX 0x00"
+            fi
+		fi
+	else
+		if [ -z $MULTIWAN ] ; then
+			wrcsman "0x80035002 {$ip} && \
+					 0x80035003 {$subnet} && \
+					 0x80035004 {$router}"
+					 
+			if [ $BACKUP_STATUS -ne 1 ] ; then
+				local WanType=`rdcsman 0x00010003 u32`
+				local DisableRussianMode=`rdcsman 0x0001002B u32` # For PPTP and L2TP wantype
+				local PPPoeDualAccess=`rdcsman 0x00043000 u32`
+				local isRussian=0
+				if [ $DisableRussianMode -eq 0 ] && [ $WanType -eq 96 ] ; then # Russian PPTP wantype
+					isRussian=1
+				elif [ $DisableRussianMode -eq 0 ] && [ $WanType -eq 128 ] ; then # Russian L2TP wantype
+					isRussian=1
+				elif [ $WANTYPE -eq 64 ] && [ $PPPoeDualAccess -eq 1 -o $PPPoeDualAccess -eq 2 ];then  
+					isRussian=1
+				fi
+				if [ $isRussian -ne 1 ];then
+					wrcsman	"0x80010002 {$ip} && \
+							 0x80010003 {$subnet} && \
+							 0x80010004 {$router}"
+				fi
+			fi
+		
+			# if in failover status do not set GW
+			if [ $RS232_BACKUP_STATUS -eq 0 -a $BACKUP_STATUS -eq 0 -a $FAILOVER_STATUS -eq 0 ] ; then
+				wrcsman "0x80035004 {$router} && \
+						 0x80010004 {$router}"	
+			fi
+
+            udhcpc_write_dns
+			wrcsman "0x80035007 0x02" 
+			if [ $WANTYPE -ne 64 ] ; then #not pppoe 
+				wrcsman "0x8001000B \"$interface && \
+						0x80010007 0x02"	
+			fi
+		else
+			wrcsman "0x8003511$MULTIHEX {$ip} && \
+					 0x8003512$MULTIHEX {$subnet} && \
+					 0x8003513$MULTIHEX {$router}"
+
+			if [ $BACKUP_STATUS -ne 1 ] ; then
+				wrcsman	"0x8001011$MULTIHEX {$ip} && \
+					     0x8001012$MULTIHEX {$subnet} && \
+						 0x8001013$MULTIHEX {$router}"	
+			fi
+		
+			cnt=0
+			for i in $dns ; do		
+				[ $cnt = 0 ] && wrcsman "0x8003514$MULTIHEX {$i} && 0x8001014$MULTIHEX {$i}"
+				[ $cnt = 1 ] && wrcsman "0x8003515$MULTIHEX {$i} && 0x8001015$MULTIHEX {$i}"
+				cnt=$(($cnt+1))		
+			done
+	
+			if [ $BACKUP_STATUS -ne 1 ] ; then
+				wrcsman "0x8003516$MULTIHEX 0x02 && \
+						 0x8001019$MULTIHEX \"$interface && \
+						 0x8001016$MULTIHEX 0x02"
+			fi
+		fi
+	fi
+}
+
+udhcpc_bound_write_csman_start()
+{
+	sl_get_IP_NM_GW_in_ifconfig $interface IF_IP IF_NM IF_GW
+	sl_get_DNS_in_resolv_conf IF_DNS1 IF_DNS2
+	sl_get_uptime CNTTIME
+
+	if [ ! -z "$IF_IP" ] && [ $IF_IP = "169.254.91.77" ] ; then
+		if [ -z $MULTIWAN ] ; then
+			wrcsman "0x80035002 0x00 && \
+					 0x80035003 0x00 && \
+					 0x80035004 0x00 && \
+					 0x80035005 0x00 && \
+					 0x80035006 0x00 && \
+					 0x80035009 0x00"
+					 
+			if [ $BACKUP_STATUS -ne 1 ] ; then
+				local WanType=`rdcsman 0x00010003 u32`
+				local DisableRussianMode=`rdcsman 0x0001002B u32` # For PPTP and L2TP wantype
+				local PPPoeDualAccess=`rdcsman 0x00043000 u32`
+				local isRussian=0
+				if [ $DisableRussianMode -eq 0 ] && [ $WanType -eq 96 ] ; then # Russian PPTP wantype
+					isRussian=1
+				elif [ $DisableRussianMode -eq 0 ] && [ $WanType -eq 128 ] ; then # Russian L2TP wantype
+					isRussian=1
+				elif [ $WANTYPE -eq 64 ] && [ $PPPoeDualAccess -eq 1 -o $PPPoeDualAccess -eq 2 ];then  
+					isRussian=1
+				fi
+				if [ $isRussian -ne 1 ];then
+					wrcsman	"0x80010002 0x00 && \
+						 0x80010003 0x00 && \
+						 0x80010004 0x00 && \
+						 0x80010005 0x00 && \
+						 0x80010006 0x00"
+				fi
+			fi
+
+		    CNT_TYPE=`rdcsman 0x0003500a u32`
+			#if CNT_TYPE is on-demand write "wait for traffic" state to csid
+	        if [ $CNT_TYPE -eq 0 ] ; then
+		        wrcsman "0x80035007 0x05 && \
+			             0x80010007 0x05"
+			else	
+	            wrcsman "0x80035007 0x00 && \
+		                 0x80010007 0x00"
+			fi
+			
+			# Handle Failover situation here
+			if [ "$FAILOVER_ENABLE" == "1" -a "$FAILOVER_WANTYPE" == "5" ] ; then
+				wrcsman "0x80430002 0x00 && \
+						 0x80430003 0x00 && \
+						 0x80430004 0x00 && \
+						 0x80430005 0x00 && \
+						 0x80430006 0x00 && \
+						 0x80430600 0x00 && \
+						 0x8043000B 0x00 && \
+						 0x8043000C 0x00"
+			fi
+		else
+			wrcsman "0x8003511$MULTIHEX 0x00 && \
+					 0x8003512$MULTIHEX 0x00 && \
+					 0x8003513$MULTIHEX 0x00 && \
+					 0x8003514$MULTIHEX 0x00 && \
+					 0x8003515$MULTIHEX 0x00 && \
+					 0x8003518$MULTIHEX 0x00"
+			
+			if [ $BACKUP_STATUS -ne 1 ] ; then
+				wrcsman	"0x8001011$MULTIHEX 0x00 && \
+						0x8001012$MULTIHEX 0x00 && \
+					 	0x8001013$MULTIHEX 0x00 && \
+					 	0x8001014$MULTIHEX 0x00 && \
+					 	0x8001015$MULTIHEX 0x00"
+			fi
+			
+		    CNT_TYPE=`rdcsman 0x0003518$MULTIHEX u32`
+			#if CNT_TYPE is on-demand write "wait for traffic" state to csid
+	        if [ $CNT_TYPE -eq 0 ] ; then
+		        wrcsman "0x8003516$MULTIHEX 0x05 && \
+			             0x8001016$MULTIHEX 0x05"
+			else	
+	            wrcsman "0x8003516$MULTIHEX 0x00 && \
+		                 0x8001016$MULTIHEX 0x00"
+			fi
+		fi
+	else
+		if [ -z $MULTIWAN ] ; then
+			wrcsman "0x80035002 {$IF_IP} && \
+					 0x80035003 {$IF_NM}"
+			wrcsman "0x80035003 {$IF_NM}"		 
+
+			if [ $BACKUP_STATUS -ne 1 ] ; then
+				local WanType=`rdcsman 0x00010003 u32`
+				local DisableRussianMode=`rdcsman 0x0001002B u32` # For PPTP and L2TP wantype
+				local PPPoeDualAccess=`rdcsman 0x00043000 u32`
+				local isRussian=0
+				if [ $DisableRussianMode -eq 0 ] && [ $WanType -eq 96 ] ; then # Russian PPTP wantype
+					isRussian=1
+				elif [ $DisableRussianMode -eq 0 ] && [ $WanType -eq 128 ] ; then # Russian L2TP wantype
+					isRussian=1
+				elif [ $WANTYPE -eq 64 ] && [ $PPPoeDualAccess -eq 1 -o $PPPoeDualAccess -eq 2 ];then  
+					isRussian=1
+				fi
+				if [ $isRussian -ne 1 ];then
+					wrcsman	"0x80010002 {$IF_IP} && \
+						0x80010003 {$IF_NM}"
+				fi
+			fi
+			
+			# if in failover status do not set GW
+			if [ $RS232_BACKUP_STATUS -eq 0 -a $BACKUP_STATUS -eq 0 -a $FAILOVER_STATUS -eq 0 ] ; then
+			wrcsman "0x80035004 {$IF_GW} && \
+					 0x80010004 {$IF_GW}"	
+			fi
+					
+            udhcpc_write_dns
+			wrcsman "0x80035007 0x02"
+			if [ $WANTYPE -ne 64 ] ; then #not pppoe
+				wrcsman "0x8001000B \"$interface && \
+						 0x80010007 0x02"	
+			fi
+			# Handle Failover situation here
+			if [ "$FAILOVER_ENABLE" == "1" -a "$FAILOVER_WANTYPE" == "5" ] ; then
+				wrcsman "0x80430002 {$IF_IP} && \
+						 0x80430003 {$IF_NM} && \
+						 0x80430004 {$IF_GW} && \
+						 0x80430005 {$IF_DNS1} && \
+						 0x80430006 {$IF_DNS2} && \
+						 0x80430600 0x01 && \
+						 0x8043000B \"$interface && \
+						 0x8043000C $CNTTIME"
+			fi
+		else
+			wrcsman "0x8003511$MULTIHEX {$IF_IP} && \
+					 0x8003512$MULTIHEX {$IF_NM} && \
+					 0x8003513$MULTIHEX {$IF_GW}"
+
+			if [ $BACKUP_STATUS -eq 1 ] ; then
+				wrcsman "0x8003513$MULTIHEX {$router}"
+			fi
+
+			if [ $BACKUP_STATUS -ne 1 ] ; then
+				wrcsman	"0x8001011$MULTIHEX {$IF_IP} && \
+						0x8001012$MULTIHEX {$IF_NM} && \
+						0x8001013$MULTIHEX {$IF_GW}"
+			fi
+		
+			cnt=0
+			for i in $dns ; do		
+				[ $cnt = 0 ] && wrcsman "0x8003514$MULTIHEX {$i} && 0x8001014$MULTIHEX {$i}"
+				[ $cnt = 1 ] && wrcsman "0x8003515$MULTIHEX {$i} && 0x8001015$MULTIHEX {$i}"
+				cnt=$(($cnt+1))		
+			done
+	
+			if [ $BACKUP_STATUS -ne 1 ] ; then
+				wrcsman "0x8003516$MULTIHEX 0x02 && \
+						 0x8001019$MULTIHEX \"$interface && \
+						 0x8001016$MULTIHEX 0x02"
+			fi
+		fi
+	fi
+}
+
+udhcpc_bound_write_csman_start_ppp()
+{
+	sl_get_IP_NM_GW_in_ifconfig $interface IF_IP IF_NM IF_GW		
+
+	logger -p 8.7 -t "udhcpc/ppp" "interface:$interface IF_IP:$IF_IP IF_NM:$IF_NM IF_GW:$IF_GW"
+	if [ $IF_IP = "169.254.91.77" ] ; then
+		if [ -z $MULTIWAN ] ; then
+			wrcsman "0x80035002 0x00 && \
+					 0x80035003 0x00 && \
+					 0x80035004 0x00"
+		else
+			wrcsman "0x8003511$MULTIHEX 0x00 && \
+					 0x8003512$MULTIHEX 0x00 && \
+					 0x8003513$MULTIHEX 0x00"
+		fi
+	else
+		if [ -z $MULTIWAN ] ; then
+			wrcsman "0x80035002 {$IF_IP} && \
+					 0x80035003 {$IF_NM}"
+		
+			# if in failover status do not set GW
+			if [ $RS232_BACKUP_STATUS -eq 0 -a $BACKUP_STATUS -eq 0 -a $FAILOVER_STATUS -eq 0 ] ; then
+				wrcsman "0x80035004 {$IF_GW}"
+			fi
+
+            udhcpc_write_dns
+			wrcsman "0x80035007 0x02"
+		else
+			wrcsman "0x8003511$MULTIHEX {$IF_IP} && \
+					 0x8003512$MULTIHEX {$IF_NM} && \
+					 0x8003513$MULTIHEX {$IF_GW}"
+		
+			cnt=0
+			for i in $dns ; do		
+				[ $cnt = 0 ] && wrcsman "0x8003514$MULTIHEX {$i} && 0x8001014$MULTIHEX {$i}"
+				[ $cnt = 1 ] && wrcsman "0x8003515$MULTIHEX {$i} && 0x8001015$MULTIHEX {$i}"
+				cnt=$(($cnt+1))		
+			done
+			wrcsman "0x8003516$MULTIHEX 0x02"
+		fi
+	fi
+}
+
+udhcpc_write_csman_stop()
+{
+	if [ -z $MULTIWAN ] ; then
+				local WanType=`rdcsman 0x00010003 u32`
+				local DisableRussianMode=`rdcsman 0x0001002B u32` # For PPTP and L2TP wantype
+				local PPPoeDualAccess=`rdcsman 0x00043000 u32`
+				local isRussian=0
+				if [ $DisableRussianMode -eq 0 ] && [ $WanType -eq 96 ] ; then # Russian PPTP wantype
+					isRussian=1
+				elif [ $DisableRussianMode -eq 0 ] && [ $WanType -eq 128 ] ; then # Russian L2TP wantype
+					isRussian=1
+				elif [ $WANTYPE -eq 64 ] && [ $PPPoeDualAccess -eq 1 -o $PPPoeDualAccess -eq 2 ];then  
+					isRussian=1
+				fi
+				if [ $isRussian -ne 1 ];then
+					wrcsman "0x80010002 0x00 && \
+							 0x80010003 0x00 && \
+							 0x80010004 0x00 && \
+							 0x80010005 0x00 && \
+							 0x80010006 0x00 && \
+							 0x80010007 0x00" 
+				fi
+				wrcsman "0x80035002 0x00 && \
+							 0x80035003 0x00 && \
+							 0x80035004 0x00 && \
+							 0x80035005 0x00 && \
+							 0x80035006 0x00 && \
+							 0x80035007 0x00 && \
+							 0x80035009 0x00"
+	else
+		wrcsman "0x8003511$MULTIHEX 0x00 && \
+				 0x8003512$MULTIHEX 0x00 && \
+				 0x8003513$MULTIHEX 0x00 && \
+				 0x8003514$MULTIHEX 0x00 && \
+				 0x8003515$MULTIHEX 0x00 && \
+				 0x8003516$MULTIHEX 0x00 && \
+				 0x8003518$MULTIHEX 0x00 && \
+				 0x8001011$MULTIHEX 0x00 && \
+				 0x8001012$MULTIHEX 0x00 && \
+				 0x8001013$MULTIHEX 0x00 && \
+				 0x8001014$MULTIHEX 0x00 && \
+				 0x8001015$MULTIHEX 0x00 && \
+				 0x8001016$MULTIHEX 0x00"
+	fi
+	
+	if [ "$FAILOVER_ENABLE" == "1" -a "$FAILOVER_WANTYPE" == "5" ] ; then
+		wrcsman "0x80430002 0x00 && \
+				 0x80430003 0x00 && \
+				 0x80430004 0x00 && \
+				 0x80430005 0x00 && \
+				 0x80430006 0x00 && \
+				 0x8043000B 0x00 && \
+				 0x8043000C 0x00 && \
+				 0x80430600 0x00"
+	fi
+	
+	if [ ! -e "/var/run/check_pppoe_voip" ] && [ ! -e /var/run/multiwan_enable ] ; then
+		if [ -f $PPP_RESOLV_CONF ] ; then
+			rm -rf $PPP_RESOLV_CONF
+		fi
+	fi
+	
+	return 0
+}
+
+		
+udhcpc_write_dns()
+{
+    local CSID_DNS1=`rdcsman 0x00035007 ipv4`
+    local CSID_DNS2=`rdcsman 0x00035008 ipv4`
+
+    # Replace each CSID fields on Russian mode
+    local WanType=`rdcsman 0x00010003 u32`
+    local DisableRussianMode=`rdcsman 0x0001002B u32` # For PPTP and L2TP wantype
+    if [ $DisableRussianMode -eq 0 ] && [ $WanType -eq 96 ] ; then # Russian PPTP wantype
+       CSID_DNS1="0.0.0.0"
+       CSID_DNS2="0.0.0.0"
+    elif [ $DisableRussianMode -eq 0 ] && [ $WanType -eq 128 ] ; then # Russian L2TP wantype
+       CSID_DNS1="0.0.0.0"
+       CSID_DNS2="0.0.0.0"
+	elif [ $WANTYPE -eq 64 ];then  
+		CSID_DNS1="0.0.0.0"
+		CSID_DNS2="0.0.0.0"
+    fi
+
+    if [ "$CSID_DNS1" != "0.0.0.0" -o "$CSID_DNS2" != "0.0.0.0" ] ; then
+        sl_insert_dns_file $RESOLV_CONF $CSID_DNS1 $CSID_DNS2
+
+		wrcsman "0x80035005 {$CSID_DNS1} && 
+                 0x80010005 {$CSID_DNS1} &&
+                 0x80035006 {$CSID_DNS2} &&
+                 0x80010006 {$CSID_DNS2}"
+    else
+        sl_insert_dns_file $RESOLV_CONF $dns
+
+        cnt=0
+        for i in $dns ; do		
+            [ $cnt = 0 ] && wrcsman "0x80035005 {$i} && 0x80010005 {$i}"
+            [ $cnt = 1 ] && wrcsman "0x80035006 {$i} && 0x80010006 {$i}"
+            cnt=$(($cnt+1))		
+        done
+    fi
+
+    # Clear local DNS1 and DNS2 CSID info on Russian PPTP or L2TP wantype
+    if [ $DisableRussianMode -eq 0 ] && [ $WanType -eq 96 ] ; then # Russian PPTP wantype
+       wrcsman "0x80010005 {0.0.0.0}"
+       wrcsman "0x80010006 {0.0.0.0}"
+    elif [ $DisableRussianMode -eq 0 ] && [ $WanType -eq 128 ] ; then # Russian L2TP wantype
+       wrcsman "0x80010005 {0.0.0.0}"
+       wrcsman "0x80010006 {0.0.0.0}"
+	elif [ $WANTYPE -eq 64 ];then  
+		wrcsman "0x80010005 {0.0.0.0}"
+       wrcsman "0x80010006 {0.0.0.0}"
+    fi
+}
+
+case "$1" in
+	deconfig)
+		/sbin/ifconfig $interface 0.0.0.0
+		udhcpc_write_csman_stop
+		[ -e $DHCP_RUSSIAN_CLR ] && sh $DHCP_RUSSIAN_CLR
+		;;
+
+	renew)
+        if [ $MTU_SIZE -eq 0 ] ; then
+            /sbin/ifconfig $interface $ip $BROADCAST $NETMASK
+        else
+            /sbin/ifconfig $interface $ip $BROADCAST $NETMASK mtu $MTU_SIZE
+        fi
+		
+		[ -n "$domain" ] && echo search $domain >> $RESOLV_CONF
+		sl_insert_dns_file $RESOLV_CONF $dns
+		udhcpc_renew_write_csman_start
+#		nat_for_russian 
+		[ -e $DHCP_RUSSIAN_SCRIPT ] && sh $DHCP_RUSSIAN_SCRIPT
+		;;
+
+	bound)
+        if [ $MTU_SIZE -eq 0 ] ; then
+            /sbin/ifconfig $interface $ip $BROADCAST $NETMASK
+        else
+            /sbin/ifconfig $interface $ip $BROADCAST $NETMASK mtu $MTU_SIZE
+        fi
+		
+		# for PPTP or L2TP and having 'deafult' route , Don't add default route
+		if [ $WANTYPE -eq 96 -o $WANTYPE -eq 128 ] ; then			
+			CFG=`route`
+			for s in $CFG
+			do			
+				if [ $s = "default" ] ; then
+                    if [ $RS232_BACKUP_STATUS -eq 2 -o $FAILOVER_STATUS -eq 2 ] ;then
+                        if [  $WANTYPE -eq 96 ]; then
+                            PPTP_PNSSERVER=`rdcsman 0x00050600 str`
+                            route add -host $PPTP_PNSSERVER gw $router dev $interface
+                            echo "route add -host $PPTP_PNSSERVER gw $router dev $interface" > /tmp/tmp_router
+                        elif [ $WANTYPE -eq 128 ]; then
+                            L2TP_LNSSERVER=`rdcsman 0x00060600 str`
+                            route add -host $L2TP_LNSSERVER gw $router dev $interface
+                            echo "route add -host $L2TP_LNSSERVER gw $router dev $interface" > /tmp/tmp_router
+                        fi
+                    fi
+			
+					if [ -e /var/run/multiwan_enable ]; then
+						break;
+					else
+						rm $RUNNING
+						exit 0
+					fi
+				fi	   
+			done			
+		fi	
+		
+
+		if [ -n "$router" ] ; then
+			echo "deleting routers"
+			while route del default gw 0.0.0.0 dev $interface ; do
+				:
+			done
+			for i in $router ; do
+				# for failover status, do not add default route
+				if [ $RS232_BACKUP_STATUS -eq 0 -a $BACKUP_STATUS -eq 0 -a $FAILOVER_STATUS -eq 0 ] ; then
+					if [ $WANTYPE -ne 64 ] ; then #not pppoe 
+						route add default gw $i dev $interface
+					fi	
+				else	# just keep gw ip for ping check
+					wrcsman "0x80035004 {$i}"
+					
+					if [ $FAILOVER_MODE -eq 1 -a $WANTYPE -eq 0 ]  ; then
+						wrcsman "0x80010004 {$i}"
+					fi
+					if [ $WANTYPE -eq 96 -o $WANTYPE -eq 128 ] ; then
+						# When L2TP and PPTP in failover status, need default gw
+						route add default gw $i dev $interface
+					fi
+				fi
+			done
+		fi
+
+		# for failover status, do not set dns info
+		if [ $RS232_BACKUP_STATUS -eq 0 -a $BACKUP_STATUS -eq 0 -a $FAILOVER_STATUS -eq 0 ] ; then
+			[ -n "$domain" ] && echo search $domain >> $RESOLV_CONF
+			sl_insert_dns_file $RESOLV_CONF $dns
+		fi
+		
+		if [ $LOADSHARING_ENABLE -eq 1 ] ; then
+			if [ -r /var/run/dont_update_wantype ]; then
+			    logger -p 8.7 -t "udhcpc" "Don't do default.script update flag !\""
+				rm -f /var/run/dont_update_wantype
+				echo "Load Sharing Don't do default.script update flag" > /tmp/LS_dhcp.log
+				echo "Load Sharing gw:$router," >> /tmp/LS_dhcp.log
+				echo "Load Sharing dns:$dns" >> /tmp/LS_dhcp.log
+				exit 0 
+			fi
+			echo "Load Sharing Don't do default.script update flag failed" >> /tmp/LS_dhcp.log
+		fi
+
+		if [ $WANTYPE -eq 96 -o $WANTYPE -eq 128 ] ; then
+			udhcpc_bound_write_csman_start_ppp
+		else
+			udhcpc_bound_write_csman_start
+		fi
+		nat_for_russian
+		[ -e $DHCP_RUSSIAN_SCRIPT ] && sh $DHCP_RUSSIAN_SCRIPT
+		;;
+
+	leasefail)		
+	 	/sbin/ifconfig $interface 0.0.0.0
+	 	
+	 	if [ -f "$PIDFILE_CONNECT" ] ; then
+			CONNECT_PID=`cat $PIDFILE_CONNECT`
+			kill $CONNECT_PID > /dev/null 2>&1
+			rm -f $PIDFILE_CONNECT > /dev/null 2>&1	
+		fi	
+		if [ -z $MULTIWAN ] ; then
+	 		wrcsman "0x80035007 0x04"	
+	 		wrcsman "0x80010007 0x04"	
+		else
+			wrcsman "0x8003516$MULTIHEX 0x04"	
+		#	wrcsman "0x8003516$MULTIWAN 0x04"	
+		fi
+		;;	
+	
+	*)
+	 	/sbin/ifconfig $interface 0.0.0.0
+		udhcpc_write_csman_stop
+		;;
+esac
+
+rm $RUNNING
+
+exit 0

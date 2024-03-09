@@ -1,0 +1,296 @@
+#!/bin/sh
+
+UDHCPC="udhcpc"
+LANIF=`rdcsman 0x8000F201 str`
+BACKUP=`rdcsman 0x801e0700 u32`
+FAILOVER=`rdcsman 0x80430600 u32`
+
+LOADSHARING_ENABLE=`rdcsman 0x004301c0 u32`
+LOADSHARING_WANTYPE=`rdcsman 0x0043000b u32`
+FIRST_CNT_STATUS=`rdcsman 0x80010007 u16`
+
+if [ -n $2 ] ; then
+	MULTIWAN=$2
+else
+	MULTIWAN=
+fi
+
+if [ -z $MULTIWAN ] ;then
+	UDHCPC_PID_FILE="/var/run/udhcpc.pid"
+	PIDFILE_CONNECT="/var/run/udhcpc.pid.connect"
+	DEMAND_FILE="/var/run/udhcpc.demand"
+	UDHCPC_DEFAULT_SCRIPT="/usr/bin/default.script"
+	ETH=`rdcsman 0x8000F231 str`
+	CNTTYPE=`rdcsman 0x0003500a u32`
+	HOSTNAME=`rdcsman 0x00035002 str`
+    IODATA_WIZARD=`rdcsman 0x80013091 u32`
+    if [ $IODATA_WIZARD -eq 1 ]; then
+        #When Execute IO-Data Wizard, Set to DHCP
+        WANTYPE=0
+    else
+        WANTYPE=`rdcsman 0x00010003 u32`
+    fi
+	CNTFORCE=`rdcsman 0x8001000e u32`
+	CLASSID=`rdcsman 0x00035010 str`
+else
+#	TMP1=$MULTIWAN
+	TMP1=$((MULTIWAN+1))
+#	TMP2=$MULTIWAN
+	TMP2=`printf "%x" $((MULTIWAN+2))`
+	MULTIHEX=`printf "%x" $MULTIWAN`
+		
+	UDHCPC_PID_FILE="/var/run/udhcpc$TMP1.pid"
+	PIDFILE_CONNECT="/var/run/udhcpc$TMP1.pid.connect"
+	DEMAND_FILE="/var/run/udhcpc$TMP1.demand"
+	UDHCPC_DEFAULT_SCRIPT="/usr/bin/default.script"
+
+	ETH=`rdcsman 0x8000F23$TMP2 str`
+	CNTTYPE=`rdcsman 0x0003518$MULTIHEX u32`
+	HOSTNAME=`rdcsman 0x0003511$MULTIHEX str`
+	WANTYPE=`rdcsman 0x0001012$MULTIHEX u32`
+	CNTFORCE=`rdcsman 0x800101C$MULTIHEX u32`
+	CLASSID=`rdcsman 0x0003540$MULTIHEX str`
+#	CNTTYPE=`rdcsman 0x0003518$MULTIWAN u32`
+#	HOSTNAME=`rdcsman 0x0003511$MULTIWAN str`
+#	WANTYPE=`rdcsman 0x0001012$MULTIWAN u32`
+#	CNTFORCE=`rdcsman 0x800101C$MULTIWAN u32`
+fi
+
+chk_hostname()
+{
+    if [ "$HOSTNAME" == "" ]; then
+	    HOSTNAME="`rdcsman 0x00010001 str`"
+        if [ "$HOSTNAME" == "" ]; then
+            if [ -f /etc/hostname ]; then
+                HOSTNAME="`cat /etc/hostname`"
+                logger -t "udhcpc" "Warning: No specify Hostname, using default Hostname ($HOSTNAME) for DHCP connection"
+                echo "Warning: No specify Hostname, using default Hostname ($HOSTNAME) for DHCP connection"
+            else
+                logger -t "udhcpc" "Warning: No specify Hostname"
+                echo "Warning: No specify Hostname"
+            fi
+        fi
+    fi  
+}
+
+chk_vendorclass()
+{
+	VENDORCLASSID=""
+	if [ "$CLASSID" != "" ]; then
+		VENDORCLASSID="--vendorclass=$CLASSID"
+	fi
+}
+
+udhcpc_status()
+{
+	TIME=0
+	TIMEOUT=10
+	while [ true ] ; do	
+		sl_get_IP_NM_GW_in_ifconfig $ETH IF_IP IF_NM IF_GW
+		#echo "$0 : IF_IP=$IF_IP IF_NM=$IF_NM IF_GW=$IF_GW"	
+		#if [ "${IF_IP}x" != "x" -a "${IF_NM}x" != "x" -a "${IF_GW}x" != "x" ] ; then
+		# Does not check IF_GW.
+		if [ "${IF_IP}x" != "x" -a "${IF_NM}x" != "x" ] ; then	
+			return 0		
+		else			
+			sleep 1
+			TIME=$((TIME+1))
+			if [ $TIME -gt $TIMEOUT ] ; then
+				return 1	
+			fi			
+		fi
+	done		
+}
+
+udhcpc_start()
+{
+    chk_hostname
+	chk_vendorclass
+
+	if [ $CNTFORCE -eq 1 ] ; then
+		if [ -z $MULTIWAN ] ; then
+		$UDHCPC -n -i $ETH -p $UDHCPC_PID_FILE -s $UDHCPC_DEFAULT_SCRIPT --hostname="$HOSTNAME" $VENDORCLASSID
+		wrcsman "0x8001000e 0x00"
+		else
+			$UDHCPC -n -i $ETH -I $MULTIWAN -p $UDHCPC_PID_FILE -s $UDHCPC_DEFAULT_SCRIPT --hostname="$HOSTNAME" $VENDORCLASSID
+		#	wrcsman "0x800101C$MULTIWAN 0x00"
+			wrcsman "0x800101C$MULTIHEX 0x00"
+		fi
+	elif [ $CNTTYPE = 0 -a $WANTYPE = 0 ] ; then
+		#udhcpc-connect &
+		if [ -z $MULTIWAN ] ; then
+		$UDHCPC -n -d -l $LANIF -i $ETH -p $UDHCPC_PID_FILE -s $UDHCPC_DEFAULT_SCRIPT --hostname="$HOSTNAME" $VENDORCLASSID
+		else
+			$UDHCPC -n -d -l $LANIF -i $ETH -I $MULTIWAN -p $UDHCPC_PID_FILE -s $UDHCPC_DEFAULT_SCRIPT --hostname="$HOSTNAME" $VENDORCLASSID
+		fi
+	elif [ $LOADSHARING_ENABLE -eq 1 -a $LOADSHARING_WANTYPE -eq 5 ] ; then
+		if [ $FIRST_CNT_STATUS -eq 2 ] ; then
+			$UDHCPC -n -i $ETH -p $UDHCPC_PID_FILE -s $UDHCPC_DEFAULT_SCRIPT --hostname="$HOSTNAME" 
+			wrcsman "0x8001000e 0x01"
+		else
+			$UDHCPC -n -i $ETH -p $UDHCPC_PID_FILE -s $UDHCPC_DEFAULT_SCRIPT --hostname="$HOSTNAME"
+		fi
+	else
+		if [ -z $MULTIWAN ] ; then
+		$UDHCPC -n -i $ETH -p $UDHCPC_PID_FILE -s $UDHCPC_DEFAULT_SCRIPT --hostname="$HOSTNAME" $VENDORCLASSID
+		else
+			$UDHCPC -n -i $ETH -I $MULTIWAN -p $UDHCPC_PID_FILE -s $UDHCPC_DEFAULT_SCRIPT --hostname="$HOSTNAME" $VENDORCLASSID
+		fi
+	fi
+
+	return $?
+}
+
+udhcpc_stop()
+{
+	[ -f "$DEMAND_FILE" ] && rm -f $DEMAND_FILE
+		
+	if [ -f "$PIDFILE_CONNECT" ] ; then
+		CONNECT_PID=`cat $PIDFILE_CONNECT`
+		kill $CONNECT_PID > /dev/null 2>&1
+		rm -f $PIDFILE_CONNECT > /dev/null 2>&1	
+	fi		
+			
+	if [ -f "$UDHCPC_PID_FILE" -a -r "$UDHCPC_PID_FILE" ] ; then 
+		UDHCPC_PID=`cat $UDHCPC_PID_FILE`
+		rm -f $UDHCPC_PID_FILE
+		kill -USR2 $UDHCPC_PID > /dev/null 2>&1 || exit 1
+		kill -15 $UDHCPC_PID > /dev/null 2>&1 || exit 1
+	fi
+			
+	ifconfig $ETH 0.0.0.0 				 		
+	#wrcsman "0x80035007 0x00 && \
+	#	   	 0x80010007 0x00"
+	
+	if [ -z $MULTIWAN ] ; then
+		wrcsman "0x80035002 0x00 && \
+				 0x80035003 0x00 && \
+				 0x80035004 0x00 && \
+				 0x80035005 0x00 && \
+				 0x80035006 0x00 && \
+				 0x80035007 0x00 && \
+				 0x80035009 0x00"
+
+        FAILOVER_STATUS=`rdcsman 0x80430600 u32`
+        if [ $FAILOVER_STATUS -eq 0 ] ; then
+			local WanType=`rdcsman 0x00010003 u32`
+			local DisableRussianMode=`rdcsman 0x0001002B u32` # For PPTP and L2TP wantype
+			local PPPoeDualAccess=`rdcsman 0x00043000 u32`
+			if [ $DisableRussianMode -eq 0 ] && [ $WanType -eq 96 ] ; then # Russian PPTP wantype
+				echo xxx >/dev/null #do nothing
+			elif [ $DisableRussianMode -eq 0 ] && [ $WanType -eq 128 ] ; then # Russian L2TP wantype
+				echo xxx >/dev/null #do nothing
+			elif [ $WANTYPE -eq 64 ] && [ $PPPoeDualAccess -eq 1 -o $PPPoeDualAccess -eq 2 ];then 
+				echo xxx >/dev/null #do nothing
+			else
+				wrcsman "0x80010002 0x00 && \
+				 0x80010003 0x00 && \
+				 0x80010004 0x00 && \
+				 0x80010005 0x00 && \
+				 0x80010006 0x00 && \
+                 0x80010007 0x00"
+			fi       
+        fi
+	else
+		wrcsman "0x8003511$MULTIHEX 0x00 && \
+				 0x8003512$MULTIHEX 0x00 && \
+				 0x8003513$MULTIHEX 0x00 && \
+				 0x8003514$MULTIHEX 0x00 && \
+				 0x8003515$MULTIHEX 0x00 && \
+				 0x8003516$MULTIHEX 0x00 && \
+				 0x8003518$MULTIHEX 0x00 && \
+				 0x8001011$MULTIHEX 0x00 && \
+				 0x8001012$MULTIHEX 0x00 && \
+				 0x8001013$MULTIHEX 0x00 && \
+				 0x8001014$MULTIHEX 0x00 && \
+				 0x8001015$MULTIHEX 0x00 && \
+				 0x8001016$MULTIHEX 0x00" 
+	#	wrcsman "0x8003511$MULTIWAN 0x00 && \
+	#			 0x8003512$MULTIWAN 0x00 && \
+	#			 0x8003513$MULTIWAN 0x00 && \
+	#			 0x8003514$MULTIWAN 0x00 && \
+	#			 0x8003515$MULTIWAN 0x00 && \
+	#			 0x8003516$MULTIWAN 0x00 && \
+	#			 0x8003518$MULTIWAN 0x00 && \
+	#			 0x8001011$MULTIWAN 0x00 && \
+	#			 0x8001012$MULTIWAN 0x00 && \
+	#			 0x8001013$MULTIWAN 0x00 && \
+	#			 0x8001014$MULTIWAN 0x00 && \
+	#			 0x8001015$MULTIWAN 0x00 && \
+	#			 0x8001016$MULTIWAN 0x00" 
+	fi
+	
+	 				 		
+	return 0
+}
+
+# main ##########################################################
+
+. /usr/bin/scriptlib
+
+case "$1" in
+
+	start)
+		udhcpc_start		
+		if [ $? = 1 ] ; then
+			ifconfig $ETH 0.0.0.0 
+			exit 1
+		fi	
+		exit 0	
+		;;
+	
+	stop)
+		udhcpc_stop
+		;;
+	
+	release)
+		if [ -f "$UDHCPC_PID_FILE" -a -r "$UDHCPC_PID_FILE" ] ; then 
+			UDHCPC_PID=`cat $UDHCPC_PID_FILE`
+			kill -USR2 $UDHCPC_PID			
+		fi		
+					
+		exit 0		
+		;;
+	
+	renew)
+		if [ $CNTTYPE = 0 ] ; then
+			udhcpc_stop
+			udhcpc_start
+		elif [ -f "$UDHCPC_PID_FILE" -a -r "$UDHCPC_PID_FILE" ] ; then 
+			UDHCPC_PID=`cat $UDHCPC_PID_FILE`
+			kill -USR1 $UDHCPC_PID
+			udhcpc_status			 			 
+		else
+            chk_hostname
+			chk_vendorclass
+			if [ -z $MULTIWAN ] ; then
+                $UDHCPC -n -i $ETH -p $UDHCPC_PID_FILE -s $UDHCPC_DEFAULT_SCRIPT --hostname="$HOSTNAME" $VENDORCLASSID
+			else
+				$UDHCPC -n -i $ETH -I $MULTIWAN -p $UDHCPC_PID_FILE -s $UDHCPC_DEFAULT_SCRIPT --hostname="$HOSTNAME" $VENDORCLASSID
+			fi
+		fi
+		
+		if [ $? = 1 ] ; then
+			if [ -z $MULTIWAN ] ; then
+			wrcsman "0x80035007 0x00 && \
+			   		 0x80010007 0x00"
+			exit 1
+			else
+			#	wrcsman "0x8003516$MULTIWAN 0x00 && \
+			#			 0x8001016$MULTIWAN 0x00"
+				wrcsman "0x8003516$MULTIHEX 0x00 && \
+						 0x8001016$MULTIHEX 0x00"
+				exit 1
+			fi
+		fi			
+		exit 0									
+		;;
+	
+		
+	*)
+		exit 1
+		;;
+esac
+
+exit 0		
+			

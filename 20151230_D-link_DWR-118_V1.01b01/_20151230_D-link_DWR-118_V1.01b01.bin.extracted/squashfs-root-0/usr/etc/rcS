@@ -1,0 +1,64 @@
+#!/bin/sh
+export PATH=$PATH:/usr/bin/scripts
+export LD_LIBRARY_PATH=/ram/lib:/lib:/lib/iptables
+
+mount -t usbfs none /proc/bus/usb
+mount -t sysfs none /sys
+mount -t devpts devpts /dev/pts
+
+while [ ! -f /tmp/csman/pre4.dat ]
+do
+	cp -a /usr/mv2ram/* /ram	
+done
+
+#hostname
+cp /etc/hostname /proc/sys/kernel/hostname
+
+#start network
+cat /proc/net/dev
+
+#reset phy, must before eth2 up
+reg s 0;            
+reg w 34 1800000;
+reg w 34 0;
+
+ifconfig eth2 up
+ifconfig lo up
+vconfig add eth2 1
+vconfig add eth2 2
+#ifconfig eth2.2 up
+
+# insert usb module
+#modprobe ehci-hcd
+#modprobe ohci-hcd
+echo /sbin/hotplug > /sys/kernel/uevent_helper
+#gpio l 0 4000 0 1 0 4000 # Cut off 3G Module Power
+
+# insert modules for iptables
+# insmod /lib/xt_time.ko
+
+# for 3G modem
+mkdir -p /var/dev
+mkdir -p /var/lock
+mkdir -p /var/locks
+mkdir -p /var/config
+mkdir -p /var/usb
+mkdir -p /var/share/empty
+
+syslogd
+klogd -f
+getpsec -f 0xFFE000 /tmp/csman/pre1.dat
+
+#if [ ! -f /usr/www/index.htm ]; then
+#	echo "Mount D Section."
+#	mount -t squashfs /dev/mtdblock4 /usr/www
+#fi
+
+if [ ! -f /usr/www/index.htm ]; then
+    echo "Mount D Section."
+    mkdir /tmp/www2
+    mount -o async -t squashfs /dev/mtdblock5 /tmp/www2
+    cp -a -r -f /tmp/www2/* /tmp/www3/
+fi
+
+commander

@@ -1,0 +1,83 @@
+#!/bin/sh
+PIDFILE_CONNECT="/var/run/udhcpc.pid.connect"
+DEMAND_FILE="/var/run/udhcpc.demand"
+ETH=`rdcsman 0x8000F231 str`
+
+Get_RX_TX_packet_num()
+{
+	local _RX_PKT _TX_PKT
+	CFG=`ifconfig $ETH`
+	stt=0
+	for s in $CFG
+	do
+		if [ $stt -eq 1 ] ; then
+			case ${s%%:*} in
+				"packets") _RX_PKT=${s##*:};;
+			esac
+			stt=0
+		fi
+		
+		if [ $stt -eq 2 ] ; then
+			case ${s%%:*} in
+				"packets") _TX_PKT=${s##*:};;
+			esac
+			break
+		fi
+				
+		[ $s = "RX" ] && stt=1
+		[ $s = "TX" ] && stt=2 			
+	done
+	
+	eval $1=$_RX_PKT
+	eval $2=$_TX_PKT
+}
+
+echo $$ > $PIDFILE_CONNECT
+IDLETIME=`rdcsman 0x0003500d u16`
+[ $IDLETIME = 0 ] && IDLETIME=600
+
+while [ true ] ; do
+	if [ -f $DEMAND_FILE ] ; then
+		STATE=`cat $DEMAND_FILE`
+		if [ $STATE = "raw" ] ; then
+			break
+		fi
+	fi	
+	sleep 1
+done
+
+while [ true ] ; do
+	
+	Get_RX_TX_packet_num old_rx_pkt old_tx_pkt
+	
+	TIME=0
+	while [ true ] ; do		
+		sleep 3
+		TIME=$((TIME+3))
+		if [ $TIME -gt $IDLETIME ] ; then
+			break;
+		fi
+	done		
+	
+	Get_RX_TX_packet_num new_rx_pkt new_tx_pkt	
+	
+	#echo "$0 : old_rx_pkt=$old_rx_pkt old_tx_pkt=$old_tx_pkt new_rx_pkt=$new_rx_pkt new_tx_pkt=$new_tx_pkt"
+	
+	diff_rx_pkt=$(($new_rx_pkt-$old_rx_pkt))
+	diff_tx_pkt=$(($new_tx_pkt-$old_tx_pkt)) 
+	
+	if [ $diff_rx_pkt -ge 0 -a $diff_rx_pkt -lt 3 ] ; then
+		rm -rf $PIDFILE_CONNECT $DEMAND_FILE
+		udhcpc-action stop
+		exit 0
+	elif [ $diff_tx_pkt -ge 0 -a $diff_tx_pkt -lt 3 ] ; then
+		rm -rf $PIDFILE_CONNECT $DEMAND_FILE
+		udhcpc-action stop
+		exit 0
+	fi	  
+	
+	
+done
+
+
+		
