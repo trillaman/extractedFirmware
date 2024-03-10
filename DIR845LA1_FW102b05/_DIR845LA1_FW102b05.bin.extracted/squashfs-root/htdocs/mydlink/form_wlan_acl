@@ -1,0 +1,48 @@
+<?
+include "/htdocs/mydlink/header.php";
+include "/htdocs/phplib/xnode.php";
+include "/htdocs/phplib/inf.php";
+include "/htdocs/webinc/config.php";
+include "/htdocs/mydlink/libservice.php";
+
+/* Current mydlink cgi doesn't indicate which SSID would apply this ACL. */
+/* It assumes that this ACL is for primary SSID. */
+
+$settingsChanged	= $_POST["settingsChanged"];
+$ACLMode			= $_POST["mode"];
+$tmp				= "/var/run/wlan_acl.php";
+$debug				= "/var/run/form_wlan_acl.txt";
+$ret="fail";
+if($settingsChanged == 1){
+	$WIFIP = XNODE_getpathbytarget("/wifi", "entry", "uid", "WIFI-1", 0);
+
+	if ($ACLMode==1){set($WIFIP."/acl/policy", DROP);   }
+	else			{set($WIFIP."/acl/policy", DISABLED);}
+
+	$MAX = query($WIFIP."/acl/max");
+
+	$i=0;	$j=0;
+	while($i<$MAX){
+		fwrite("w+", $tmp, "<?\n");
+		fwrite("a",  $tmp, "$MAC	= $_POST[\"mac_".$i."\"];\n");
+		fwrite("a",  $tmp, "$ENABLE	= $_POST[\"enable_".$i."\"];\n");
+		fwrite("a",  $tmp, "?>\n");
+		dophp("load",$tmp);
+		$i++;
+		if($MAC!="" && $ENABLE!=""){
+			$j=$i;
+			set($WIFIP."/acl/entry:".$i."/enable", $ENABLE);
+			set($WIFIP."/acl/entry:".$i."/mac", $MAC);
+		}else{
+			del($WIFIP."/acl/entry:".$i."/enable", $ENABLE);
+			del($WIFIP."/acl/entry:".$i."/mac", $MAC);
+		}
+	}
+	set($WIFIP."/acl/count",$j);
+	unlink($tmp);
+	$ret="ok";
+	runservice($SRVC_WLAN." restart");
+}
+
+?>
+<?=$ret?>

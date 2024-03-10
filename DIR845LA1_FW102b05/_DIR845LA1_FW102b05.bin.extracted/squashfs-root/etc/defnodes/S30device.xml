@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<wrgnd21_dlob.hans_dir845>
+	<runtime>
+		<device>
+			<vendor>D-Link</vendor>
+			<fwinfosrv>wrpd.dlink.com.tw</fwinfosrv>
+			<fwinfopath>/router/firmware/query.asp</fwinfopath>
+			<upnpmodelname>D-Link Router</upnpmodelname>
+		</device>
+	</runtime>
+</wrgnd21_dlob.hans_dir845>
